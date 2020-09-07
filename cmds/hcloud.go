@@ -3,6 +3,7 @@ package cmds
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/qbart/ohowl/cloudh"
 	"github.com/qbart/ohowl/utils"
@@ -23,8 +24,19 @@ var (
 			fmt.Println(string(utils.Json(data)))
 		},
 	}
+
+	hcloudWaitForIp = &cobra.Command{
+		Use:   "wait",
+		Short: "Wait for private IP to be assigned",
+		Run: func(cmd *cobra.Command, args []string) {
+			if ok := cloudh.WaitForIp(); !ok {
+				os.Exit(1)
+			}
+		},
+	}
 )
 
 func init() {
 	cmdHCloud.AddCommand(hcloudMetadata)
+	cmdHCloud.AddCommand(hcloudWaitForIp)
 }

@@ -2,6 +2,8 @@ package cloudh
 
 import (
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/qbart/ohowl/utils"
 )
@@ -59,4 +61,33 @@ func GetMetadata() (*Metadata, error) {
 		PrivateIpv4: networks[0].Ip,
 		PublicIpv4:  metadata.PublicIpv4,
 	}, nil
+}
+
+func WaitForIp() bool {
+	ch := make(chan bool)
+	go func() {
+		ready := false
+
+		// wait up to 300s till you receive IP
+		for i := 0; i < 30; i++ {
+			log.Printf("Check #%d\n", i+1)
+			if metadata, err := GetMetadata(); err == nil {
+				if len(metadata.PrivateIpv4) > 0 {
+					ready = true
+					ch <- ready
+					close(ch)
+					break
+				}
+			}
+
+			time.Sleep(10 * time.Second)
+		}
+
+		if !ready {
+			ch <- false
+			close(ch)
+		}
+	}()
+
+	return <-ch
 }
