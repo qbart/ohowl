@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/qbart/ohowl/cloudh"
 	"github.com/qbart/ohowl/utils"
@@ -34,9 +35,41 @@ var (
 			}
 		},
 	}
+
+	hcloudServers = &cobra.Command{
+		Use:   "servers",
+		Short: "Get servers by labels",
+		Run: func(cmd *cobra.Command, args []string) {
+			byLabels := cloudh.LabelSelector{
+				MustLabels:    make(map[string]string, 0),
+				MustNotLabels: make(map[string]string, 0),
+			}
+
+			// build filters from args:
+			// key=aaa other!=bbb
+			for _, arg := range args {
+				kv := strings.SplitN(arg, "=", 2)
+				last := kv[0][len(kv[0])-1]
+				if last == '!' {
+					byLabels.MustNotLabels[kv[0][:len(kv[0])-1]] = kv[1]
+				} else {
+					byLabels.MustLabels[kv[0]] = kv[1]
+				}
+			}
+
+			data, err := cloudh.GetServers(os.Getenv("HCLOUD_TOKEN"), cloudh.ServerFilter{
+				ByLabel: byLabels,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println(string(data))
+		},
+	}
 )
 
 func init() {
 	cmdHCloud.AddCommand(hcloudMetadata)
 	cmdHCloud.AddCommand(hcloudWaitForIp)
+	cmdHCloud.AddCommand(hcloudServers)
 }
