@@ -66,10 +66,29 @@ var (
 			fmt.Println(string(data))
 		},
 	}
+
+	cmdHCloudTls = &cobra.Command{Use: "tls", Short: "Certificates"}
+
+	hcloudTlsAuto = &cobra.Command{
+		Use:   "auto",
+		Short: "DNS challenge",
+		Run: func(cmd *cobra.Command, args []string) {
+			autoTls := cloudh.ConfigAutoTls(cloudh.Dns{
+				Token: os.Getenv("HCLOUD_DNS_TOKEN"),
+				Email: os.Getenv("EMAIL"),
+			}, true)
+
+			if err := autoTls.Start(strings.Split(os.Getenv("ZONE"), ",")); err != nil {
+				log.Fatal(err)
+			}
+		},
+	}
 )
 
 func init() {
 	cmdHCloud.AddCommand(hcloudMetadata)
 	cmdHCloud.AddCommand(hcloudWaitForIp)
 	cmdHCloud.AddCommand(hcloudServers)
+	cmdHCloud.AddCommand(cmdHCloudTls)
+	cmdHCloudTls.AddCommand(hcloudTlsAuto)
 }

@@ -18,7 +18,6 @@ func init() {
 	cmdRoot.AddCommand(cmdAgent)
 	cmdRoot.AddCommand(cmdHCloud)
 	cmdRoot.AddCommand(cmdTpl)
-	cmdRoot.AddCommand(cmdTls)
 }
 
 func Run() {

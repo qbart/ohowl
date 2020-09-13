@@ -18,21 +18,24 @@ func ConfigAutoTls(dns Dns, debug bool) *AutoTlsProvider {
 	provider := AutoTlsProvider{
 		DNS: dns,
 	}
+
 	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
 		DNSProvider: &provider,
 	}
 
-	// read and agree to your CA's legal documents
-	certmagic.DefaultACME.Agreed = true
+	if dns.Path != "" {
+		certmagic.Default.Storage = &certmagic.FileStorage{Path: dns.Path}
+	}
 
-	// provide an email address
+	certmagic.Default.OnDemand = nil
+	certmagic.DefaultACME.Agreed = true
 	certmagic.DefaultACME.Email = dns.Email
 
 	if debug {
 		certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
 	}
 
-	certmagic.Default.OnDemand = nil
+	// magic := certmagic.NewDefault()
 
 	return &provider
 }
@@ -49,6 +52,7 @@ type AutoTlsProvider struct {
 type Dns struct {
 	Token string
 	Email string
+	Path  string
 }
 
 type schemaZone struct {
@@ -74,6 +78,39 @@ type dnsRecord struct {
 	ZoneID string `json:"zone_id,omitempty"`
 }
 
+func (d dnsRecord) String() string {
+	return fmt.Sprint(
+		d.Name,
+		" ",
+		d.TTL,
+		" IN ",
+		d.Type,
+		" ",
+		d.Value,
+	)
+}
+
+func (d *dnsRecord) ToLibdns() libdns.Record {
+	return libdns.Record{
+		ID:    d.ID,
+		Name:  d.Name,
+		Type:  d.Type,
+		Value: d.Value,
+		TTL:   time.Duration(d.TTL) * time.Second,
+	}
+}
+
+func (d *dnsRecord) FromLibdns(rec libdns.Record, zone string) *dnsRecord {
+	d.ID = rec.ID
+	// d.Name = strings.TrimSuffix(rec.Name, fmt.Sprint(".", ZoneName(zone)))
+	d.Name = rec.Name
+	d.Type = rec.Type
+	d.Value = rec.Value
+	d.TTL = int(rec.TTL.Seconds())
+
+	return d
+}
+
 type dnsZone struct {
 	ID           string   `json:"id,omitempty"`
 	Name         string   `json:"name,omitempty"`
@@ -82,12 +119,15 @@ type dnsZone struct {
 	RecordsCount int      `json:"records_count,omitempty"`
 }
 
-func (*AutoTlsProvider) dnsName(s string) string {
+func ZoneName(s string) string {
 	return strings.TrimSuffix(s, ".")
 }
 
 func (atp *AutoTlsProvider) Start(domains []string) error {
 	return certmagic.ManageSync(domains)
+	// tls, err := certmagic.TLS(domains)
+	// log.Println(len(tls.Certificates))
+	// return err
 }
 
 func (atp *AutoTlsProvider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
@@ -102,11 +142,10 @@ func (atp *AutoTlsProvider) GetRecords(ctx context.Context, zone string) ([]libd
 		"Auth-API-Token": atp.DNS.Token,
 	}
 
-	r := tea.HttpGet("https://dns.hetzner.com/api/v1/zones", req.Param{"name": atp.dnsName(zone)}, headers).ToJSON(&schemaZone)
+	r := tea.HttpGet("https://dns.hetzner.com/api/v1/zones", req.Param{"name": ZoneName(zone)}, headers).ToJSON(&schemaZone)
 	if r.Err != nil {
 		return nil, r.Err
 	}
-	log.Printf("%+v", schemaZone)
 
 	r = tea.HttpGet(
 		"https://dns.hetzner.com/api/v1/records",
@@ -116,17 +155,11 @@ func (atp *AutoTlsProvider) GetRecords(ctx context.Context, zone string) ([]libd
 	if r.Err != nil {
 		return nil, r.Err
 	}
-	log.Printf("%+v", schema)
 
 	recs := make([]libdns.Record, 0)
 	for _, rec := range schema.Records {
-		recs = append(recs, libdns.Record{
-			ID:    rec.ID,
-			Name:  rec.Name,
-			Type:  rec.Type,
-			Value: rec.Value,
-			TTL:   time.Duration(rec.TTL) * time.Second,
-		})
+		log.Println(rec)
+		recs = append(recs, rec.ToLibdns())
 	}
 
 	return recs, nil
@@ -140,21 +173,18 @@ func (atp *AutoTlsProvider) AppendRecords(ctx context.Context, zone string, reco
 	}
 
 	var schemaZone schemaZone
-	r := tea.HttpGet("https://dns.hetzner.com/api/v1/zones", req.Param{"name": atp.dnsName(zone)}, headers).ToJSON(&schemaZone)
+	r := tea.HttpGet("https://dns.hetzner.com/api/v1/zones", req.Param{"name": ZoneName(zone)}, headers).ToJSON(&schemaZone)
 	if r.Err != nil {
 		return nil, r.Err
 	}
 
 	input := []dnsRecord{}
 	for _, rec := range records {
-		input = append(input, dnsRecord{
-			ID:     rec.ID,
-			Name:   rec.Name,
-			Type:   rec.Type,
-			Value:  rec.Value,
-			TTL:    int(rec.TTL.Seconds()),
-			ZoneID: schemaZone.Zones[0].ID,
-		})
+		dnsRec := dnsRecord{ZoneID: schemaZone.Zones[0].ID}
+		dnsRec.FromLibdns(rec, zone)
+		log.Println(dnsRec)
+
+		input = append(input, dnsRec)
 	}
 
 	var schema schemaBulkCreateRecords
@@ -172,13 +202,7 @@ func (atp *AutoTlsProvider) AppendRecords(ctx context.Context, zone string, reco
 
 	var created []libdns.Record
 	for _, r := range schema.ValidRecords {
-		created = append(created, libdns.Record{
-			ID:    r.ID,
-			Name:  r.Name,
-			Type:  r.Type,
-			Value: r.Value,
-			TTL:   time.Duration(r.TTL) * time.Second,
-		})
+		created = append(created, r.ToLibdns())
 	}
 
 	return created, nil
@@ -188,16 +212,32 @@ func (atp *AutoTlsProvider) AppendRecords(ctx context.Context, zone string, reco
 // it will be looked up. It returns the records that were deleted.
 func (atp *AutoTlsProvider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
 	log.Println("TLS deleting records")
-	// existingRecs, err := atp.GetRecords(ctx, zone)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	existingRecs, err := atp.GetRecords(ctx, zone)
+	if err != nil {
+		return nil, err
+	}
+	var todo []libdns.Record
+
 	var wg sync.WaitGroup
 	wg.Add(len(records))
 
 	ch := make(chan libdns.Record)
 
 	for _, rec := range records {
+		if rec.ID != "" {
+			todo = append(todo, rec)
+		} else {
+			for _, m := range existingRecs {
+				tmp := dnsRecord{}
+				rec = tmp.FromLibdns(rec, zone).ToLibdns()
+				if rec.Name == m.Name && rec.Value == m.Value {
+					todo = append(todo, rec)
+				}
+			}
+		}
+	}
+
+	for _, rec := range todo {
 		go func(rec libdns.Record) {
 			defer wg.Done()
 			r := tea.HttpDelete(
