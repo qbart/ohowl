@@ -77,7 +77,14 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			if vars.Exist("path") {
-				list, err := cloudh.ListTls(cloudh.Dns{Path: vars.GetString("path")})
+				tls := cloudh.AutoTls{
+					Config: cloudh.TlsConfig{
+						Path: vars.GetString("path"),
+					},
+					Storage: &cloudh.TlsFileStorage{},
+				}
+
+				certs, err := tls.List()
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -85,7 +92,7 @@ var (
 				table := tablewriter.NewWriter(os.Stdout)
 				table.SetHeader([]string{"Common Name", "DNS", "Expiry", "File"})
 
-				for _, cert := range list {
+				for _, cert := range certs {
 					table.Append([]string{
 						cert.CommonName,
 						strings.Join(cert.DNS, ", "),
@@ -107,14 +114,18 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			if vars.Exist("token", "email", "zones", "path") {
-				err := cloudh.AutoTls(cloudh.Dns{
-					Token:   vars.GetString("token"),
-					Email:   vars.GetString("email"),
-					Domains: vars.GetStrings("zones", ","),
-					Path:    vars.GetString("path"),
-					Debug:   vars.GetBoolDefault("debug", false),
-				})
+				tls := cloudh.AutoTls{
+					Config: cloudh.TlsConfig{
+						Token:   vars.GetString("token"),
+						Email:   vars.GetString("email"),
+						Domains: vars.GetStrings("zones", ","),
+						Path:    vars.GetString("path"),
+						Debug:   vars.GetBoolDefault("debug", false),
+					},
+					Storage: &cloudh.TlsFileStorage{},
+				}
 
+				err := tls.IssueNew()
 				if err != nil {
 					log.Fatal(err)
 				}

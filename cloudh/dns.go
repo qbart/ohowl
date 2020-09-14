@@ -1,7 +1,6 @@
 package cloudh
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -10,46 +9,43 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/go-acme/lego/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/providers/dns/hetzner"
 	"github.com/go-acme/lego/v4/registration"
+	"github.com/qbart/ohowl/owl"
 	"github.com/qbart/ohowl/tea"
 	"golang.org/x/net/idna"
 )
 
-func AutoTls(dns Dns) error {
+func (at *AutoTls) IssueNew() error {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
 	}
 
 	user := AcmeUser{
-		Email: dns.Email,
+		Email: at.Config.Email,
 		key:   privateKey,
 	}
 
 	config := lego.NewConfig(&user)
+	config.UserAgent = owl.UserAgent
 	config.CADirURL = lego.LEDirectoryProduction
-	if dns.Debug {
+	if at.Config.Debug {
 		log.Println("!!! STAGING MODE !!!")
 		config.CADirURL = lego.LEDirectoryStaging
 	}
+
 	client, err := lego.NewClient(config)
 	if err != nil {
 		return err
 	}
-
-	hc := hetzner.NewDefaultConfig()
-	hc.APIKey = dns.Token
-	provider, err := hetzner.NewDNSProviderConfig(hc)
-	if err != nil {
+	if err = at.setupDnsChallenge(client); err != nil {
 		return err
 	}
-	client.Challenge.SetDNS01Provider(provider)
 
 	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
 	if err != nil {
@@ -58,7 +54,7 @@ func AutoTls(dns Dns) error {
 	user.Registration = reg
 
 	request := certificate.ObtainRequest{
-		Domains: dns.Domains,
+		Domains: at.Config.Domains,
 		Bundle:  true,
 	}
 	certificates, err := client.Certificate.Obtain(request)
@@ -66,29 +62,15 @@ func AutoTls(dns Dns) error {
 		return err
 	}
 
-	fs := TlsFS{Path: dns.Path}
-	return fs.Write(certificates)
-}
-
-func ListTls(dns Dns) ([]TlsCert, error) {
-	fs := TlsFS{Path: dns.Path}
-	return fs.List()
-}
-
-type TlsFS struct {
-	Path string
-}
-
-func (fs *TlsFS) Write(res *certificate.Resource) error {
 	return tea.ErrCoalesce(
-		ioutil.WriteFile(filepath.Join(fs.Path, fs.escapeFileName(fmt.Sprint(res.Domain, ".key"))), res.PrivateKey, 0o644),
-		ioutil.WriteFile(filepath.Join(fs.Path, fs.escapeFileName(fmt.Sprint(res.Domain, ".crt"))), res.Certificate, 0o644),
-		ioutil.WriteFile(filepath.Join(fs.Path, fs.escapeFileName(fmt.Sprint(res.Domain, ".ca"))), res.IssuerCertificate, 0o644),
+		at.Storage.Write(filepath.Join(at.Config.Path, at.escapeFileName(fmt.Sprint(certificates.Domain, ".key"))), certificates.PrivateKey),
+		at.Storage.Write(filepath.Join(at.Config.Path, at.escapeFileName(fmt.Sprint(certificates.Domain, ".crt"))), certificates.Certificate),
+		at.Storage.Write(filepath.Join(at.Config.Path, at.escapeFileName(fmt.Sprint(certificates.Domain, ".ca"))), certificates.IssuerCertificate),
 	)
 }
 
-func (fs *TlsFS) List() ([]TlsCert, error) {
-	matches, err := filepath.Glob(filepath.Join(fs.Path, "*.crt"))
+func (at *AutoTls) List() ([]TlsCert, error) {
+	matches, err := at.Storage.Find(at.Config.Path, "*.crt")
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +95,19 @@ func (fs *TlsFS) List() ([]TlsCert, error) {
 	return certs, nil
 }
 
-func (fs *TlsFS) escapeFileName(f string) string {
+func (at *AutoTls) setupDnsChallenge(client *lego.Client) error {
+	hc := hetzner.NewDefaultConfig()
+	hc.APIKey = at.Config.Token
+	provider, err := hetzner.NewDNSProviderConfig(hc)
+	if err != nil {
+		return err
+	}
+
+	client.Challenge.SetDNS01Provider(provider)
+	return nil
+}
+
+func (at *AutoTls) escapeFileName(f string) string {
 	safe, err := idna.ToASCII(strings.Replace(f, "*", "_", -1))
 	if err != nil {
 		log.Fatal(err)
@@ -121,38 +115,36 @@ func (fs *TlsFS) escapeFileName(f string) string {
 	return safe
 }
 
-type TlsCert struct {
-	CommonName string
-	DNS        []string
-	Expiry     time.Time
-	Path       string
-}
+// func needsRenewal(x509Cert *x509.Certificate, domain string, days int) (bool, error) {
+// 	if x509Cert.IsCA {
+// 		return false, fmt.Errorf("[%s] Certificate bundle starts with a CA certificate", domain)
+// 	}
 
-type TlsStorage interface {
-	Write(res *certificate.Resource) error
-	List() []TlsCert
-}
+// 	if days >= 0 {
+// 		notAfter := int(time.Until(x509Cert.NotAfter).Hours() / 24.0)
+// 		if notAfter > days {
+// 			return false, fmt.Errorf("[%s] The certificate expires in %d days, the number of days defined to perform the renewal is %d: no renewal.", domain, notAfter, days)
+// 		}
+// 	}
+// 	account, client := setup(ctx, NewAccountsStorage(ctx))
+// 	setupChallenges(ctx, client)
 
-type Dns struct {
-	Token   string
-	Email   string
-	Path    string
-	Domains []string
-	Debug   bool
-}
+// 	if account.Registration == nil {
+// 		log.Fatalf("Account %s is not registered. Use 'run' to register a new account.\n", account.Email)
+// 	}
 
-type AcmeUser struct {
-	Email        string
-	Registration *registration.Resource
-	key          crypto.PrivateKey
-}
+// 	certsStorage := NewCertificatesStorage(ctx)
 
-func (u *AcmeUser) GetEmail() string {
-	return u.Email
-}
-func (u AcmeUser) GetRegistration() *registration.Resource {
-	return u.Registration
-}
-func (u *AcmeUser) GetPrivateKey() crypto.PrivateKey {
-	return u.key
-}
+// 	bundle := !ctx.Bool("no-bundle")
+
+// 	meta := map[string]string{renewEnvAccountEmail: account.Email}
+
+// 	// CSR
+// 	if ctx.GlobalIsSet("csr") {
+// 		return renewForCSR(ctx, client, certsStorage, bundle, meta)
+// 	}
+
+// 	// Domains
+// 	return renewForDomains(ctx, client, certsStorage, bundle, meta)
+// 	return true, nil
+// }
