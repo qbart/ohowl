@@ -1,11 +1,12 @@
 package cloudh
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
 
-	"github.com/qbart/ohowl/utils"
+	"github.com/qbart/ohowl/tea"
 )
 
 const (
@@ -39,21 +40,19 @@ type Metadata struct {
 }
 
 func GetMetadata() (*Metadata, error) {
-	body, err := utils.Get(fmt.Sprint(hcloudMetadataApiBase))
-	if err != nil {
-		return nil, err
+	var (
+		metadata ServerMetadata
+		networks ServerMetadataPrivateNetworks
+	)
+
+	r := tea.HttpGet(context.TODO(), fmt.Sprint(hcloudMetadataApiBase)).ToYAML(&metadata)
+	if r.Err != nil {
+		return nil, r.Err
 	}
-
-	var metadata ServerMetadata
-	utils.FromYaml(body, &metadata)
-
-	body, err = utils.Get(fmt.Sprint(hcloudMetadataApiBase, "/private-networks"))
-	if err != nil {
-		return nil, err
+	r = tea.HttpGet(context.TODO(), fmt.Sprint(hcloudMetadataApiBase, "/private-networks")).ToYAML(&networks)
+	if r.Err != nil {
+		return nil, r.Err
 	}
-
-	var networks ServerMetadataPrivateNetworks
-	utils.FromYaml(body, &networks)
 
 	return &Metadata{
 		ID:          metadata.InstanceID,

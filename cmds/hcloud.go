@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/olekukonko/tablewriter"
 	"github.com/qbart/ohowl/cloudh"
-	"github.com/qbart/ohowl/utils"
+	"github.com/qbart/ohowl/tea"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +24,7 @@ var (
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println(string(utils.Json(data)))
+			fmt.Println(string(tea.MustJson(data)))
 		},
 	}
 
@@ -69,17 +71,55 @@ var (
 
 	cmdHCloudTls = &cobra.Command{Use: "tls", Short: "Certificates"}
 
+	hcloudTlsList = &cobra.Command{
+		Use:   "list",
+		Short: "List certificates",
+		Run: func(cmd *cobra.Command, args []string) {
+			vars := tea.ParseEqArgs(args)
+			if vars.Exist("path") {
+				list, err := cloudh.ListTls(cloudh.Dns{Path: vars.GetString("path")})
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				table := tablewriter.NewWriter(os.Stdout)
+				table.SetHeader([]string{"Common Name", "DNS", "Expiry", "File"})
+
+				for _, cert := range list {
+					table.Append([]string{
+						cert.CommonName,
+						strings.Join(cert.DNS, ", "),
+						cert.Expiry.String(),
+						filepath.Base(cert.Path),
+					})
+				}
+				table.Render()
+
+			} else {
+				log.Fatal("Missing required params: path=")
+			}
+		},
+	}
+
 	hcloudTlsAuto = &cobra.Command{
 		Use:   "auto",
 		Short: "DNS challenge",
 		Run: func(cmd *cobra.Command, args []string) {
-			autoTls := cloudh.ConfigAutoTls(cloudh.Dns{
-				Token: os.Getenv("HCLOUD_DNS_TOKEN"),
-				Email: os.Getenv("EMAIL"),
-			}, true)
+			vars := tea.ParseEqArgs(args)
+			if vars.Exist("token", "email", "zones", "path") {
+				err := cloudh.AutoTls(cloudh.Dns{
+					Token:   vars.GetString("token"),
+					Email:   vars.GetString("email"),
+					Domains: vars.GetStrings("zones", ","),
+					Path:    vars.GetString("path"),
+					Debug:   vars.GetBoolDefault("debug", false),
+				})
 
-			if err := autoTls.Start(strings.Split(os.Getenv("ZONE"), ",")); err != nil {
-				log.Fatal(err)
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				log.Fatal("Missing required params: token= email= zones= path=")
 			}
 		},
 	}
@@ -90,5 +130,6 @@ func init() {
 	cmdHCloud.AddCommand(hcloudWaitForIp)
 	cmdHCloud.AddCommand(hcloudServers)
 	cmdHCloud.AddCommand(cmdHCloudTls)
+	cmdHCloudTls.AddCommand(hcloudTlsList)
 	cmdHCloudTls.AddCommand(hcloudTlsAuto)
 }

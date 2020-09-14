@@ -4,9 +4,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
-	"text/template"
 
+	"github.com/qbart/ohowl/tea"
 	"github.com/spf13/cobra"
 )
 
@@ -35,19 +34,9 @@ var (
 
 			b, err := ioutil.ReadAll(file)
 
-			vars := make(map[string]interface{}, 0)
-
-			for _, arg := range args[1:] {
-				kv := strings.SplitN(arg, "=", 2)
-				vars[kv[0]] = kv[1]
-			}
-
-			tmpl, err := template.New(path).Parse(string(b))
+			vars := tea.ParseEqArgs(args[1:])
+			err = tea.TplRender(os.Stdout, b, vars.Raw)
 			if err != nil {
-				log.Fatal(err)
-			}
-
-			if err := tmpl.Execute(os.Stdout, vars); err != nil {
 				log.Fatal(err)
 			}
 		},

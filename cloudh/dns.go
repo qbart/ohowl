@@ -1,281 +1,158 @@
 package cloudh
 
 import (
-	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/caddyserver/certmagic"
-	"github.com/imroc/req"
-	"github.com/libdns/libdns"
+	"github.com/go-acme/lego/certcrypto"
+	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/lego"
+	"github.com/go-acme/lego/v4/providers/dns/hetzner"
+	"github.com/go-acme/lego/v4/registration"
 	"github.com/qbart/ohowl/tea"
+	"golang.org/x/net/idna"
 )
 
-func ConfigAutoTls(dns Dns, debug bool) *AutoTlsProvider {
-	provider := AutoTlsProvider{
-		DNS: dns,
+func AutoTls(dns Dns) error {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
 	}
 
-	certmagic.DefaultACME.DNS01Solver = &certmagic.DNS01Solver{
-		DNSProvider: &provider,
+	user := AcmeUser{
+		Email: dns.Email,
+		key:   privateKey,
 	}
 
-	if dns.Path != "" {
-		certmagic.Default.Storage = &certmagic.FileStorage{Path: dns.Path}
+	config := lego.NewConfig(&user)
+	config.CADirURL = lego.LEDirectoryProduction
+	if dns.Debug {
+		log.Println("!!! STAGING MODE !!!")
+		config.CADirURL = lego.LEDirectoryStaging
+	}
+	client, err := lego.NewClient(config)
+	if err != nil {
+		return err
 	}
 
-	certmagic.Default.OnDemand = nil
-	certmagic.DefaultACME.Agreed = true
-	certmagic.DefaultACME.Email = dns.Email
+	hc := hetzner.NewDefaultConfig()
+	hc.APIKey = dns.Token
+	provider, err := hetzner.NewDNSProviderConfig(hc)
+	if err != nil {
+		return err
+	}
+	client.Challenge.SetDNS01Provider(provider)
 
-	if debug {
-		certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
+	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+	if err != nil {
+		return err
+	}
+	user.Registration = reg
+
+	request := certificate.ObtainRequest{
+		Domains: dns.Domains,
+		Bundle:  true,
+	}
+	certificates, err := client.Certificate.Obtain(request)
+	if err != nil {
+		return err
 	}
 
-	// magic := certmagic.NewDefault()
-
-	return &provider
+	fs := TlsFS{Path: dns.Path}
+	return fs.Write(certificates)
 }
 
-type AutoTlsProvider struct {
-	DNS Dns
-
-	libdns.RecordGetter
-	libdns.RecordAppender
-	// libdns.RecordSetter
-	libdns.RecordDeleter
+func ListTls(dns Dns) ([]TlsCert, error) {
+	fs := TlsFS{Path: dns.Path}
+	return fs.List()
 }
 
-type Dns struct {
-	Token string
-	Email string
-	Path  string
+type TlsFS struct {
+	Path string
 }
 
-type schemaZone struct {
-	Zones []dnsZone `json:"zones,omitempty"`
-}
-
-type schemaRecords struct {
-	Records []dnsRecord `json:"records,omitempty"`
-}
-
-type schemaBulkCreateRecords struct {
-	Records        []dnsRecord `json:"records,omitempty"`
-	ValidRecords   []dnsRecord `json:"valid_records,omitempty"`
-	InvalidRecords []dnsRecord `json:"invalid_records,omitempty"`
-}
-
-type dnsRecord struct {
-	ID     string `json:"id,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Type   string `json:"type,omitempty"`
-	Value  string `json:"value,omitempty"`
-	TTL    int    `json:"ttl,omitempty"`
-	ZoneID string `json:"zone_id,omitempty"`
-}
-
-func (d dnsRecord) String() string {
-	return fmt.Sprint(
-		d.Name,
-		" ",
-		d.TTL,
-		" IN ",
-		d.Type,
-		" ",
-		d.Value,
+func (fs *TlsFS) Write(res *certificate.Resource) error {
+	return tea.ErrCoalesce(
+		ioutil.WriteFile(filepath.Join(fs.Path, fs.escapeFileName(fmt.Sprint(res.Domain, ".key"))), res.PrivateKey, 0o644),
+		ioutil.WriteFile(filepath.Join(fs.Path, fs.escapeFileName(fmt.Sprint(res.Domain, ".crt"))), res.Certificate, 0o644),
+		ioutil.WriteFile(filepath.Join(fs.Path, fs.escapeFileName(fmt.Sprint(res.Domain, ".ca"))), res.IssuerCertificate, 0o644),
 	)
 }
 
-func (d *dnsRecord) ToLibdns() libdns.Record {
-	return libdns.Record{
-		ID:    d.ID,
-		Name:  d.Name,
-		Type:  d.Type,
-		Value: d.Value,
-		TTL:   time.Duration(d.TTL) * time.Second,
-	}
-}
-
-func (d *dnsRecord) FromLibdns(rec libdns.Record, zone string) *dnsRecord {
-	d.ID = rec.ID
-	// d.Name = strings.TrimSuffix(rec.Name, fmt.Sprint(".", ZoneName(zone)))
-	d.Name = rec.Name
-	d.Type = rec.Type
-	d.Value = rec.Value
-	d.TTL = int(rec.TTL.Seconds())
-
-	return d
-}
-
-type dnsZone struct {
-	ID           string   `json:"id,omitempty"`
-	Name         string   `json:"name,omitempty"`
-	Ns           []string `json:"ns,omitempty"`
-	TTL          int      `json:"ttl,omitempty"`
-	RecordsCount int      `json:"records_count,omitempty"`
-}
-
-func ZoneName(s string) string {
-	return strings.TrimSuffix(s, ".")
-}
-
-func (atp *AutoTlsProvider) Start(domains []string) error {
-	return certmagic.ManageSync(domains)
-	// tls, err := certmagic.TLS(domains)
-	// log.Println(len(tls.Certificates))
-	// return err
-}
-
-func (atp *AutoTlsProvider) GetRecords(ctx context.Context, zone string) ([]libdns.Record, error) {
-	log.Println("TLS getting records")
-	var (
-		schemaZone schemaZone
-		schema     schemaRecords
-	)
-
-	headers := req.Header{
-		"Content-Type":   "application/json",
-		"Auth-API-Token": atp.DNS.Token,
-	}
-
-	r := tea.HttpGet("https://dns.hetzner.com/api/v1/zones", req.Param{"name": ZoneName(zone)}, headers).ToJSON(&schemaZone)
-	if r.Err != nil {
-		return nil, r.Err
-	}
-
-	r = tea.HttpGet(
-		"https://dns.hetzner.com/api/v1/records",
-		headers,
-		req.Param{"zone_id": schemaZone.Zones[0].ID},
-	).ToJSON(&schema)
-	if r.Err != nil {
-		return nil, r.Err
-	}
-
-	recs := make([]libdns.Record, 0)
-	for _, rec := range schema.Records {
-		log.Println(rec)
-		recs = append(recs, rec.ToLibdns())
-	}
-
-	return recs, nil
-}
-
-func (atp *AutoTlsProvider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	log.Println("TLS appending records")
-	headers := req.Header{
-		"Content-Type":   "application/json",
-		"Auth-API-Token": atp.DNS.Token,
-	}
-
-	var schemaZone schemaZone
-	r := tea.HttpGet("https://dns.hetzner.com/api/v1/zones", req.Param{"name": ZoneName(zone)}, headers).ToJSON(&schemaZone)
-	if r.Err != nil {
-		return nil, r.Err
-	}
-
-	input := []dnsRecord{}
-	for _, rec := range records {
-		dnsRec := dnsRecord{ZoneID: schemaZone.Zones[0].ID}
-		dnsRec.FromLibdns(rec, zone)
-		log.Println(dnsRec)
-
-		input = append(input, dnsRec)
-	}
-
-	var schema schemaBulkCreateRecords
-	r = tea.HttpPost(
-		"https://dns.hetzner.com/api/v1/records/bulk",
-		req.Header{
-			"Content-Type":   "application/json",
-			"Auth-API-Token": atp.DNS.Token,
-		},
-		req.BodyJSON(schemaRecords{Records: input}),
-	).ToJSON(&schema)
-	if r.Err != nil {
-		return nil, r.Err
-	}
-
-	var created []libdns.Record
-	for _, r := range schema.ValidRecords {
-		created = append(created, r.ToLibdns())
-	}
-
-	return created, nil
-}
-
-// DeleteRecords deletes the records from the zone. If a record does not have an ID,
-// it will be looked up. It returns the records that were deleted.
-func (atp *AutoTlsProvider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	log.Println("TLS deleting records")
-	existingRecs, err := atp.GetRecords(ctx, zone)
+func (fs *TlsFS) List() ([]TlsCert, error) {
+	matches, err := filepath.Glob(filepath.Join(fs.Path, "*.crt"))
 	if err != nil {
 		return nil, err
 	}
-	var todo []libdns.Record
 
-	var wg sync.WaitGroup
-	wg.Add(len(records))
-
-	ch := make(chan libdns.Record)
-
-	for _, rec := range records {
-		if rec.ID != "" {
-			todo = append(todo, rec)
-		} else {
-			for _, m := range existingRecs {
-				tmp := dnsRecord{}
-				rec = tmp.FromLibdns(rec, zone).ToLibdns()
-				if rec.Name == m.Name && rec.Value == m.Value {
-					todo = append(todo, rec)
-				}
-			}
+	certs := make([]TlsCert, 0)
+	for _, filename := range matches {
+		data, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return certs, err
 		}
-	}
-
-	for _, rec := range todo {
-		go func(rec libdns.Record) {
-			defer wg.Done()
-			r := tea.HttpDelete(
-				fmt.Sprint("https://dns.hetzner.com/api/v1/records/", rec.ID),
-				req.Header{
-					"Content-Type":   "application/json",
-					"Auth-API-Token": atp.DNS.Token,
-				},
-			)
-			if r.Err == nil {
-				ch <- rec
-			} else {
-				log.Println(r.Err)
-			}
-		}(rec)
-	}
-
-	var recs []libdns.Record
-	go func() {
-		for rec := range ch {
-			recs = append(recs, rec)
+		cert, err := certcrypto.ParsePEMCertificate(data)
+		if err != nil {
+			return certs, err
 		}
-	}()
-	wg.Wait()
-
-	return recs, nil
+		certs = append(certs, TlsCert{
+			CommonName: cert.Subject.CommonName,
+			DNS:        cert.DNSNames,
+			Expiry:     cert.NotAfter,
+			Path:       filename,
+		})
+	}
+	return certs, nil
 }
 
-func (atp *AutoTlsProvider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	log.Println("TLS upserting records")
-	var results []libdns.Record
-	return results, nil
+func (fs *TlsFS) escapeFileName(f string) string {
+	safe, err := idna.ToASCII(strings.Replace(f, "*", "_", -1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return safe
 }
 
-// Interface guards
-var (
-	_ libdns.RecordGetter   = (*AutoTlsProvider)(nil)
-	_ libdns.RecordAppender = (*AutoTlsProvider)(nil)
-	// _ libdns.RecordSetter   = (*AutoTlsProvider)(nil)
-	_ libdns.RecordDeleter = (*AutoTlsProvider)(nil)
-)
+type TlsCert struct {
+	CommonName string
+	DNS        []string
+	Expiry     time.Time
+	Path       string
+}
+
+type TlsStorage interface {
+	Write(res *certificate.Resource) error
+	List() []TlsCert
+}
+
+type Dns struct {
+	Token   string
+	Email   string
+	Path    string
+	Domains []string
+	Debug   bool
+}
+
+type AcmeUser struct {
+	Email        string
+	Registration *registration.Resource
+	key          crypto.PrivateKey
+}
+
+func (u *AcmeUser) GetEmail() string {
+	return u.Email
+}
+func (u AcmeUser) GetRegistration() *registration.Resource {
+	return u.Registration
+}
+func (u *AcmeUser) GetPrivateKey() crypto.PrivateKey {
+	return u.key
+}

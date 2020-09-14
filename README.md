@@ -22,3 +22,22 @@ owl tpl render /tmp/consul.json \
     node_name=$(owl hcloud metadata | jq -r .hostname) \
     > /opt/consul/config/default.json
 ```
+
+## TLS
+
+### Storage
+
+Issue certificate (when testing use `debug=true`)
+```
+owl hcloud tls auto
+    token=$HCLOUD_DNS_TOKEN
+    email=you@example.com
+    zones=*.ohowl.dev,ohowl.dev
+    path=/tmp
+    debug=true
+```
+
+List certificates
+```
+owl hcloud tls list path=/tmp
+```

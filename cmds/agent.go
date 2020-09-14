@@ -7,7 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/qbart/ohowl/cloudh"
-	"github.com/qbart/ohowl/utils"
+	"github.com/qbart/ohowl/tea"
 	"github.com/spf13/cobra"
 )
 
@@ -20,11 +20,9 @@ var cmdAgent = &cobra.Command{
 			data, err := cloudh.GetMetadata()
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write(utils.Json(map[string]interface{}{
-					"error": err,
-				}))
+				w.Write(tea.MustJson(map[string]interface{}{"error": err}))
 			} else {
-				w.Write(utils.Json(data))
+				w.Write(tea.MustJson(data))
 			}
 		}).Methods("GET")
 
