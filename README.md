@@ -26,6 +26,8 @@ owl tpl render /tmp/consul.json \
 ## TLS
 
 ### Storage
+- filesystem
+- S3 (TODO)
 
 Issue certificate (when testing use `debug=true`)
 ```
