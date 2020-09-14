@@ -25,7 +25,7 @@ owl tpl render /tmp/consul.json \
 
 ## TLS
 
-### Storage
+Storage support:
 - filesystem
 - S3 (TODO)
 
