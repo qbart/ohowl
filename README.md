@@ -2,7 +2,7 @@ TODO:
 - Consul/Vault storage
 - cert revocation
 
-# Oh Owl!
+# Oh, Owl!
 
 **Hetzner** Cloud utils
 
@@ -29,7 +29,7 @@ owl tpl render /tmp/consul.json \
 
 ## TLS
 
-Issues, renews and lists certificates using Let's Encrypt (based on lego [](https://github.com/go-acme/lego/) library :star:).
+Issues, renews and lists certificates using Let's Encrypt (based on [lego](https://github.com/go-acme/lego/) library :star:).
 Uses pluggable storage system.
 
 Issue/Renew certificate (when testing use `debug=true`)
