@@ -81,7 +81,8 @@ var (
 					Config: cloudh.TlsConfig{
 						Path: vars.GetString("path"),
 					},
-					Storage: &cloudh.TlsFileStorage{},
+					Storage:        &cloudh.TlsFileStorage{},
+					AccountStorage: &cloudh.TlsFileStorage{},
 				}
 
 				certs, err := tls.List()
@@ -122,7 +123,8 @@ var (
 						Path:    vars.GetString("path"),
 						Debug:   vars.GetBoolDefault("debug", false),
 					},
-					Storage: &cloudh.TlsFileStorage{},
+					Storage:        &cloudh.TlsFileStorage{},
+					AccountStorage: &cloudh.TlsFileStorage{},
 				}
 
 				err := tls.Issue()
@@ -149,7 +151,8 @@ var (
 						Path:    vars.GetString("path"),
 						Debug:   vars.GetBoolDefault("debug", false),
 					},
-					Storage: &cloudh.TlsFileStorage{},
+					Storage:        &cloudh.TlsFileStorage{},
+					AccountStorage: &cloudh.TlsFileStorage{},
 				}
 
 				err := tls.Renew(false)

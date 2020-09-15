@@ -1,5 +1,5 @@
 TODO:
-- Consul storage
+- Consul/Vault storage
 - cert revocation
 
 # Oh Owl!

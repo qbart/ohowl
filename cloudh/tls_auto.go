@@ -89,7 +89,7 @@ func (at *AutoTls) Renew(reuseKey bool) error {
 	log.Printf("[%s] acme: Trying renewal with %d hours remaining", domain, int(timeLeft.Hours()))
 
 	// technically passed domains might be different than cert domains
-	// so it should be merge like lego lib does it but for Owl purpose
+	// so it should be merged like lego lib does it but for Owl purpose
 	// this behavior is not needed
 	// certDomains := certcrypto.ExtractDomains(cert)
 
@@ -223,7 +223,7 @@ func (at *AutoTls) setup() (*AcmeUser, *lego.Client, error) {
 
 	user := &AcmeUser{Email: at.Config.Email, key: privateKey}
 
-	if exists, err := at.Storage.Exists(at.accountFilePath()); exists {
+	if exists, err := at.AccountStorage.Exists(at.accountFilePath()); exists {
 		if user, err = at.readAccount(privateKey); err != nil {
 			return nil, nil, err
 		}
@@ -246,7 +246,7 @@ func (at *AutoTls) saveAccount(user *AcmeUser) error {
 		return err
 	}
 
-	return at.Storage.Write(at.accountFilePath(), jsonBytes)
+	return at.AccountStorage.Write(at.accountFilePath(), jsonBytes)
 }
 
 func (at *AutoTls) accountFilePath() string {
@@ -256,7 +256,7 @@ func (at *AutoTls) accountFilePath() string {
 func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
 	path := filepath.Join(at.Config.Path, at.Config.Email+".key")
 
-	exists, err := at.Storage.Exists(path)
+	exists, err := at.AccountStorage.Exists(path)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
 }
 
 func (at *AutoTls) readAccount(key crypto.PrivateKey) (*AcmeUser, error) {
-	b, err := at.Storage.Read(at.accountFilePath())
+	b, err := at.AccountStorage.Read(at.accountFilePath())
 	if err != nil {
 		return nil, err
 	}

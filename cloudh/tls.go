@@ -28,8 +28,9 @@ type TlsConfig struct {
 }
 
 type AutoTls struct {
-	Config  TlsConfig
-	Storage TlsStorage
+	Config         TlsConfig
+	Storage        TlsStorage
+	AccountStorage TlsStorage
 }
 
 type TlsCert struct {
