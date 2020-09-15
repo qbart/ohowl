@@ -29,8 +29,8 @@ owl tpl render /tmp/consul.json \
 
 ## TLS
 
-Storage support:
-- filesystem
+Issues, renews and lists certificates using Let's Encrypt (based on lego [](https://github.com/go-acme/lego/) library :star:).
+Uses pluggable storage system.
 
 Issue/Renew certificate (when testing use `debug=true`)
 ```

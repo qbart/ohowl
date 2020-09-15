@@ -1,6 +1,7 @@
 package cloudh
 
 import (
+	"context"
 	"crypto"
 	"io/ioutil"
 	"os"
@@ -11,10 +12,10 @@ import (
 )
 
 type TlsStorage interface {
-	Exists(key string) (bool, error)
-	Write(key string, b []byte) error
-	Read(key string) ([]byte, error)
-	Find(key string, filter string) ([]string, error)
+	Exists(ctx context.Context, key string) (bool, error)
+	Write(ctx context.Context, key string, b []byte) error
+	Read(ctx context.Context, key string) ([]byte, error)
+	Find(ctx context.Context, key string, filter string) ([]string, error)
 }
 
 type TlsFileStorage struct{}
@@ -48,7 +49,7 @@ type AcmeUser struct {
 
 // ----- TlsFileStorage -----
 
-func (fs *TlsFileStorage) Exists(key string) (bool, error) {
+func (fs *TlsFileStorage) Exists(ctx context.Context, key string) (bool, error) {
 	if _, err := os.Stat(key); os.IsNotExist(err) {
 		return false, nil
 	} else if err != nil {
@@ -57,15 +58,15 @@ func (fs *TlsFileStorage) Exists(key string) (bool, error) {
 	return true, nil
 }
 
-func (fs *TlsFileStorage) Write(key string, b []byte) error {
+func (fs *TlsFileStorage) Write(ctx context.Context, key string, b []byte) error {
 	return ioutil.WriteFile(key, b, 0o644)
 }
 
-func (fs *TlsFileStorage) Read(key string) ([]byte, error) {
+func (fs *TlsFileStorage) Read(ctx context.Context, key string) ([]byte, error) {
 	return ioutil.ReadFile(key)
 }
 
-func (fs *TlsFileStorage) Find(key string, filter string) ([]string, error) {
+func (fs *TlsFileStorage) Find(ctx context.Context, key string, filter string) ([]string, error) {
 	return filepath.Glob(filepath.Join(key, filter))
 }
 

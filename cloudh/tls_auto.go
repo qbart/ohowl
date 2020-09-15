@@ -1,6 +1,7 @@
 package cloudh
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -95,7 +96,7 @@ func (at *AutoTls) Renew(reuseKey bool) error {
 
 	var privateKey crypto.PrivateKey
 	if reuseKey {
-		keyBytes, err := at.Storage.Read(at.getFileName(domain, ".key"))
+		keyBytes, err := at.Storage.Read(context.TODO(), at.getFileName(domain, ".key"))
 		if err != nil {
 			return fmt.Errorf("Error while loading the private key for domain %s\n\t%w", domain, err)
 		}
@@ -127,14 +128,14 @@ func (at *AutoTls) Renew(reuseKey bool) error {
 }
 
 func (at *AutoTls) List() ([]TlsCert, error) {
-	matches, err := at.Storage.Find(at.Config.Path, "*.crt")
+	matches, err := at.Storage.Find(context.TODO(), at.Config.Path, "*.crt")
 	if err != nil {
 		return nil, err
 	}
 
 	certs := make([]TlsCert, 0)
 	for _, filename := range matches {
-		data, err := at.Storage.Read(filename)
+		data, err := at.Storage.Read(context.TODO(), filename)
 		if err != nil {
 			return certs, err
 		}
@@ -154,14 +155,14 @@ func (at *AutoTls) List() ([]TlsCert, error) {
 
 func (at *AutoTls) saveResource(res *certificate.Resource) error {
 	return tea.ErrCoalesce(
-		at.Storage.Write(at.getFileName(res.Domain, ".key"), res.PrivateKey),
-		at.Storage.Write(at.getFileName(res.Domain, ".crt"), res.Certificate),
-		at.Storage.Write(at.getFileName(res.Domain, ".ca"), res.IssuerCertificate),
+		at.Storage.Write(context.TODO(), at.getFileName(res.Domain, ".key"), res.PrivateKey),
+		at.Storage.Write(context.TODO(), at.getFileName(res.Domain, ".crt"), res.Certificate),
+		at.Storage.Write(context.TODO(), at.getFileName(res.Domain, ".ca"), res.IssuerCertificate),
 	)
 }
 
 func (at *AutoTls) readCertificate(domain, ext string) ([]*x509.Certificate, error) {
-	content, err := at.Storage.Read(at.getFileName(domain, ext))
+	content, err := at.Storage.Read(context.TODO(), at.getFileName(domain, ext))
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +224,7 @@ func (at *AutoTls) setup() (*AcmeUser, *lego.Client, error) {
 
 	user := &AcmeUser{Email: at.Config.Email, key: privateKey}
 
-	if exists, err := at.AccountStorage.Exists(at.accountFilePath()); exists {
+	if exists, err := at.AccountStorage.Exists(context.TODO(), at.accountFilePath()); exists {
 		if user, err = at.readAccount(privateKey); err != nil {
 			return nil, nil, err
 		}
@@ -246,7 +247,7 @@ func (at *AutoTls) saveAccount(user *AcmeUser) error {
 		return err
 	}
 
-	return at.AccountStorage.Write(at.accountFilePath(), jsonBytes)
+	return at.AccountStorage.Write(context.TODO(), at.accountFilePath(), jsonBytes)
 }
 
 func (at *AutoTls) accountFilePath() string {
@@ -256,7 +257,7 @@ func (at *AutoTls) accountFilePath() string {
 func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
 	path := filepath.Join(at.Config.Path, at.Config.Email+".key")
 
-	exists, err := at.AccountStorage.Exists(path)
+	exists, err := at.AccountStorage.Exists(context.TODO(), path)
 	if err != nil {
 		return nil, err
 	}
@@ -270,13 +271,13 @@ func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
 		pemKey := certcrypto.PEMBlock(privateKey)
 		b := pem.EncodeToMemory(pemKey)
 
-		err = at.Storage.Write(path, b)
+		err = at.Storage.Write(context.TODO(), path, b)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	b, err := at.Storage.Read(path)
+	b, err := at.Storage.Read(context.TODO(), path)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to load user private key %w", err)
 	}
@@ -293,7 +294,7 @@ func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
 }
 
 func (at *AutoTls) readAccount(key crypto.PrivateKey) (*AcmeUser, error) {
-	b, err := at.AccountStorage.Read(at.accountFilePath())
+	b, err := at.AccountStorage.Read(context.TODO(), at.accountFilePath())
 	if err != nil {
 		return nil, err
 	}
