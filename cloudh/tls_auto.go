@@ -1,16 +1,21 @@
 package cloudh
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/go-acme/lego/certcrypto"
+	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/providers/dns/hetzner"
@@ -20,53 +25,105 @@ import (
 	"golang.org/x/net/idna"
 )
 
-func (at *AutoTls) IssueNew() error {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// Issue requests new cert.
+func (at *AutoTls) Issue() error {
+	user, client, err := at.setup()
 	if err != nil {
 		return err
 	}
+	if user.Registration == nil {
+		reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+		if err != nil {
+			return err
+		}
+		user.Registration = reg
 
-	user := AcmeUser{
-		Email: at.Config.Email,
-		key:   privateKey,
+		if err = at.saveAccount(user); err != nil {
+			return err
+		}
 	}
-
-	config := lego.NewConfig(&user)
-	config.UserAgent = owl.UserAgent
-	config.CADirURL = lego.LEDirectoryProduction
-	if at.Config.Debug {
-		log.Println("!!! STAGING MODE !!!")
-		config.CADirURL = lego.LEDirectoryStaging
-	}
-
-	client, err := lego.NewClient(config)
-	if err != nil {
-		return err
-	}
-	if err = at.setupDnsChallenge(client); err != nil {
-		return err
-	}
-
-	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
-	if err != nil {
-		return err
-	}
-	user.Registration = reg
 
 	request := certificate.ObtainRequest{
-		Domains: at.Config.Domains,
-		Bundle:  true,
+		Domains:        at.Config.Domains,
+		Bundle:         true,
+		MustStaple:     false,
+		PreferredChain: "",
 	}
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
 		return err
 	}
 
-	return tea.ErrCoalesce(
-		at.Storage.Write(filepath.Join(at.Config.Path, at.escapeFileName(fmt.Sprint(certificates.Domain, ".key"))), certificates.PrivateKey),
-		at.Storage.Write(filepath.Join(at.Config.Path, at.escapeFileName(fmt.Sprint(certificates.Domain, ".crt"))), certificates.Certificate),
-		at.Storage.Write(filepath.Join(at.Config.Path, at.escapeFileName(fmt.Sprint(certificates.Domain, ".ca"))), certificates.IssuerCertificate),
-	)
+	return at.saveResource(certificates)
+}
+
+func (at *AutoTls) Renew(reuseKey bool) error {
+	user, client, err := at.setup()
+	if err != nil {
+		return err
+	}
+	if user.Registration == nil {
+		return fmt.Errorf("Account is not registered. Issue new certificate.")
+	}
+
+	if len(at.Config.Domains) == 0 {
+		return errors.New("Domain is not specified")
+	}
+	domain := at.Config.Domains[0]
+
+	certificates, err := at.readCertificate(domain, ".crt")
+	if err != nil {
+		return fmt.Errorf("Error while loading the certificate for domain %s\n\t%w", domain, err)
+	}
+
+	cert := certificates[0]
+	if cert.IsCA {
+		return fmt.Errorf("[%s] Certificate bundle starts with a CA certificate", domain)
+	}
+
+	if !at.needsRenewal(cert, domain, 30) {
+		return nil
+	}
+
+	timeLeft := cert.NotAfter.Sub(time.Now().UTC())
+	log.Printf("[%s] acme: Trying renewal with %d hours remaining", domain, int(timeLeft.Hours()))
+
+	// technically passed domains might be different than cert domains
+	// so it should be merge like lego lib does it but for Owl purpose
+	// this behavior is not needed
+	// certDomains := certcrypto.ExtractDomains(cert)
+
+	var privateKey crypto.PrivateKey
+	if reuseKey {
+		keyBytes, err := at.Storage.Read(at.getFileName(domain, ".key"))
+		if err != nil {
+			return fmt.Errorf("Error while loading the private key for domain %s\n\t%w", domain, err)
+		}
+
+		privateKey, err = certcrypto.ParsePEMPrivateKey(keyBytes)
+		if err != nil {
+			return err
+		}
+	} else {
+		privateKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return err
+		}
+	}
+
+	request := certificate.ObtainRequest{
+		Domains:        at.Config.Domains,
+		Bundle:         true,
+		PrivateKey:     privateKey,
+		MustStaple:     false,
+		PreferredChain: "",
+	}
+	certRes, err := client.Certificate.Obtain(request)
+	if err != nil {
+		return err
+	}
+
+	return at.saveResource(certRes)
 }
 
 func (at *AutoTls) List() ([]TlsCert, error) {
@@ -77,7 +134,7 @@ func (at *AutoTls) List() ([]TlsCert, error) {
 
 	certs := make([]TlsCert, 0)
 	for _, filename := range matches {
-		data, err := ioutil.ReadFile(filename)
+		data, err := at.Storage.Read(filename)
 		if err != nil {
 			return certs, err
 		}
@@ -95,6 +152,31 @@ func (at *AutoTls) List() ([]TlsCert, error) {
 	return certs, nil
 }
 
+func (at *AutoTls) saveResource(res *certificate.Resource) error {
+	return tea.ErrCoalesce(
+		at.Storage.Write(at.getFileName(res.Domain, ".key"), res.PrivateKey),
+		at.Storage.Write(at.getFileName(res.Domain, ".crt"), res.Certificate),
+		at.Storage.Write(at.getFileName(res.Domain, ".ca"), res.IssuerCertificate),
+	)
+}
+
+func (at *AutoTls) readCertificate(domain, ext string) ([]*x509.Certificate, error) {
+	content, err := at.Storage.Read(at.getFileName(domain, ext))
+	if err != nil {
+		return nil, err
+	}
+
+	return certcrypto.ParsePEMBundle(content)
+}
+
+func (at *AutoTls) getFileName(domain, ext string) string {
+	safe, err := idna.ToASCII(strings.Replace(fmt.Sprint(domain, ext), "*", "_", -1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return filepath.Join(at.Config.Path, safe)
+}
+
 func (at *AutoTls) setupDnsChallenge(client *lego.Client) error {
 	hc := hetzner.NewDefaultConfig()
 	hc.APIKey = at.Config.Token
@@ -107,44 +189,159 @@ func (at *AutoTls) setupDnsChallenge(client *lego.Client) error {
 	return nil
 }
 
-func (at *AutoTls) escapeFileName(f string) string {
-	safe, err := idna.ToASCII(strings.Replace(f, "*", "_", -1))
-	if err != nil {
-		log.Fatal(err)
+func (at *AutoTls) needsRenewal(x509Cert *x509.Certificate, domain string, days int) bool {
+	if days >= 0 {
+		notAfter := int(time.Until(x509Cert.NotAfter).Hours() / 24.0)
+		if notAfter > days {
+			log.Printf("[%s] The certificate expires in %d days, the number of days defined to perform the renewal is %d: no renewal.", domain, notAfter, days)
+			return false
+		}
 	}
-	return safe
+	return true
 }
 
-// func needsRenewal(x509Cert *x509.Certificate, domain string, days int) (bool, error) {
-// 	if x509Cert.IsCA {
-// 		return false, fmt.Errorf("[%s] Certificate bundle starts with a CA certificate", domain)
-// 	}
+func (at *AutoTls) newClient(acc registration.User, keyType certcrypto.KeyType) (*lego.Client, error) {
+	config := lego.NewConfig(acc)
+	config.UserAgent = owl.UserAgent
+	config.CADirURL = at.caDirUrl()
 
-// 	if days >= 0 {
-// 		notAfter := int(time.Until(x509Cert.NotAfter).Hours() / 24.0)
-// 		if notAfter > days {
-// 			return false, fmt.Errorf("[%s] The certificate expires in %d days, the number of days defined to perform the renewal is %d: no renewal.", domain, notAfter, days)
-// 		}
-// 	}
-// 	account, client := setup(ctx, NewAccountsStorage(ctx))
-// 	setupChallenges(ctx, client)
+	config.Certificate = lego.CertificateConfig{
+		KeyType: keyType,
+		Timeout: 30 * time.Second,
+	}
 
-// 	if account.Registration == nil {
-// 		log.Fatalf("Account %s is not registered. Use 'run' to register a new account.\n", account.Email)
-// 	}
+	client, err := lego.NewClient(config)
+	if err != nil {
+		return nil, fmt.Errorf("Could not create client: %w", err)
+	}
 
-// 	certsStorage := NewCertificatesStorage(ctx)
+	return client, nil
+}
 
-// 	bundle := !ctx.Bool("no-bundle")
+func (at *AutoTls) setup() (*AcmeUser, *lego.Client, error) {
+	privateKey, err := at.accountPrivateKey()
 
-// 	meta := map[string]string{renewEnvAccountEmail: account.Email}
+	user := &AcmeUser{Email: at.Config.Email, key: privateKey}
 
-// 	// CSR
-// 	if ctx.GlobalIsSet("csr") {
-// 		return renewForCSR(ctx, client, certsStorage, bundle, meta)
-// 	}
+	if exists, err := at.Storage.Exists(at.accountFilePath()); exists {
+		if user, err = at.readAccount(privateKey); err != nil {
+			return nil, nil, err
+		}
+	}
 
-// 	// Domains
-// 	return renewForDomains(ctx, client, certsStorage, bundle, meta)
-// 	return true, nil
-// }
+	client, err := at.newClient(user, certcrypto.EC384)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = at.setupDnsChallenge(client); err != nil {
+		return nil, nil, err
+	}
+
+	return user, client, nil
+}
+
+func (at *AutoTls) saveAccount(user *AcmeUser) error {
+	jsonBytes, err := json.MarshalIndent(user, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	return at.Storage.Write(at.accountFilePath(), jsonBytes)
+}
+
+func (at *AutoTls) accountFilePath() string {
+	return filepath.Join(at.Config.Path, at.Config.Email+".json")
+}
+
+func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
+	path := filepath.Join(at.Config.Path, at.Config.Email+".key")
+
+	exists, err := at.Storage.Exists(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		privateKey, err := certcrypto.GeneratePrivateKey(certcrypto.EC384)
+		if err != nil {
+			return nil, err
+		}
+
+		pemKey := certcrypto.PEMBlock(privateKey)
+		b := pem.EncodeToMemory(pemKey)
+
+		err = at.Storage.Write(path, b)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	b, err := at.Storage.Read(path)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to load user private key %w", err)
+	}
+	keyBlock, _ := pem.Decode(b)
+
+	switch keyBlock.Type {
+	case "RSA PRIVATE KEY":
+		return x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(keyBlock.Bytes)
+	}
+
+	return nil, errors.New("Unknown private key type")
+}
+
+func (at *AutoTls) readAccount(key crypto.PrivateKey) (*AcmeUser, error) {
+	b, err := at.Storage.Read(at.accountFilePath())
+	if err != nil {
+		return nil, err
+	}
+	var account AcmeUser
+	err = json.Unmarshal(b, &account)
+	if err != nil {
+		return nil, err
+	}
+	account.key = key
+
+	if account.Registration == nil || account.Registration.Body.Status == "" {
+		reg, err := at.tryRecoverRegistration(key)
+		if err != nil {
+			return nil, fmt.Errorf("Could not load account Registration is nil: %w", err)
+		}
+
+		account.Registration = reg
+		err = at.saveAccount(&account)
+		if err != nil {
+			return nil, fmt.Errorf("Could not save account. Registration is nil: %w", err)
+		}
+	}
+
+	return &account, nil
+}
+
+func (at *AutoTls) tryRecoverRegistration(key crypto.PrivateKey) (*registration.Resource, error) {
+	config := lego.NewConfig(&AcmeUser{key: key})
+	config.UserAgent = owl.UserAgent
+	config.CADirURL = at.caDirUrl()
+
+	client, err := lego.NewClient(config)
+	if err != nil {
+		return nil, err
+	}
+
+	reg, err := client.Registration.ResolveAccountByKey()
+	if err != nil {
+		return nil, err
+	}
+	return reg, nil
+}
+
+func (at *AutoTls) caDirUrl() string {
+	result := lego.LEDirectoryProduction
+	if at.Config.Debug {
+		log.Println("!!! STAGING MODE !!!")
+		result = lego.LEDirectoryStaging
+	}
+	return result
+}

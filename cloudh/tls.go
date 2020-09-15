@@ -3,6 +3,7 @@ package cloudh
 import (
 	"crypto"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 )
 
 type TlsStorage interface {
+	Exists(key string) (bool, error)
 	Write(key string, b []byte) error
 	Read(key string) ([]byte, error)
 	Find(key string, filter string) ([]string, error)
@@ -38,12 +40,21 @@ type TlsCert struct {
 }
 
 type AcmeUser struct {
-	Email        string
-	Registration *registration.Resource
+	Email        string                 `json:"email,omitempty"`
+	Registration *registration.Resource `json:"registration,omitempty"`
 	key          crypto.PrivateKey
 }
 
 // ----- TlsFileStorage -----
+
+func (fs *TlsFileStorage) Exists(key string) (bool, error) {
+	if _, err := os.Stat(key); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
+}
 
 func (fs *TlsFileStorage) Write(key string, b []byte) error {
 	return ioutil.WriteFile(key, b, 0o644)

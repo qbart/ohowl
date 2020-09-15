@@ -108,9 +108,9 @@ var (
 		},
 	}
 
-	hcloudTlsAuto = &cobra.Command{
-		Use:   "auto",
-		Short: "DNS challenge",
+	hcloudTlsIssue = &cobra.Command{
+		Use:   "issue",
+		Short: "Issue new certificate using DNS challenge",
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			if vars.Exist("token", "email", "zones", "path") {
@@ -125,7 +125,34 @@ var (
 					Storage: &cloudh.TlsFileStorage{},
 				}
 
-				err := tls.IssueNew()
+				err := tls.Issue()
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				log.Fatal("Missing required params: token= email= zones= path=")
+			}
+		},
+	}
+
+	hcloudTlsRenew = &cobra.Command{
+		Use:   "renew",
+		Short: "Attempts certifcate renowal",
+		Run: func(cmd *cobra.Command, args []string) {
+			vars := tea.ParseEqArgs(args)
+			if vars.Exist("token", "email", "zones", "path") {
+				tls := cloudh.AutoTls{
+					Config: cloudh.TlsConfig{
+						Token:   vars.GetString("token"),
+						Email:   vars.GetString("email"),
+						Domains: vars.GetStrings("zones", ","),
+						Path:    vars.GetString("path"),
+						Debug:   vars.GetBoolDefault("debug", false),
+					},
+					Storage: &cloudh.TlsFileStorage{},
+				}
+
+				err := tls.Renew(false)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -142,5 +169,6 @@ func init() {
 	cmdHCloud.AddCommand(hcloudServers)
 	cmdHCloud.AddCommand(cmdHCloudTls)
 	cmdHCloudTls.AddCommand(hcloudTlsList)
-	cmdHCloudTls.AddCommand(hcloudTlsAuto)
+	cmdHCloudTls.AddCommand(hcloudTlsIssue)
+	cmdHCloudTls.AddCommand(hcloudTlsRenew)
 }

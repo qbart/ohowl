@@ -1,8 +1,12 @@
+TODO:
+- Consul storage
+- cert revocation
+
 # Oh Owl!
 
-Hetzner Cloud utils
+**Hetzner** Cloud utils
 
-## Usage (Hetzner)
+## Usage
 
 Get metadata
 ```
@@ -27,16 +31,18 @@ owl tpl render /tmp/consul.json \
 
 Storage support:
 - filesystem
-- S3 (TODO)
 
-Issue certificate (when testing use `debug=true`)
+Issue/Renew certificate (when testing use `debug=true`)
 ```
-owl hcloud tls auto
+owl hcloud tls issue
     token=$HCLOUD_DNS_TOKEN
     email=you@example.com
     zones=*.ohowl.dev,ohowl.dev
     path=/tmp
     debug=true
+
+owl hcloud tls renew
+   ... # same params
 ```
 
 List certificates
