@@ -3,21 +3,32 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/qbart/ohowl/cloudh"
 	"github.com/qbart/ohowl/owl"
 	"github.com/qbart/ohowl/tea"
 )
 
 type App struct {
-	Debug  bool
-	Token  string
-	consul *tea.Consul
-	vault  *tea.Vault
+	Debug    bool
+	DnsEmail string
+	DnsToken string
+	Token    string
+	consul   *tea.Consul
+	vault    *tea.Vault
+}
+
+type TfCreateRequest struct {
+	Path    string   `json:"path,omitempty" binding:"required"`
+	Domains []string `json:"domains,omitempty" binding:"required"`
 }
 
 func (a *App) Run() {
@@ -42,7 +53,30 @@ func (a *App) Run() {
 			{
 				// C
 				v1.PUT("/certificate", func(c *gin.Context) {
+					var req TfCreateRequest
+					if err := c.ShouldBindJSON(&req); err != nil {
+						c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": "Missing required parameters: path, domains"})
+						return
+					}
+					log.Printf("Issue: [%s] in path: %s", strings.Join(req.Domains, ","), req.Path)
+					fs := cloudh.TlsConsulFileStorage{KV: a.consul.KV()}
+					tls := cloudh.AutoTls{
+						Config: cloudh.TlsConfig{
+							Token:   a.DnsToken,
+							Email:   a.DnsEmail,
+							Domains: req.Domains,
+							Path:    req.Path,
+							Debug:   a.Debug,
+						},
+						Storage:        &fs,
+						AccountStorage: &fs,
+					}
 
+					if err := tls.Issue(); err != nil {
+						c.String(http.StatusUnprocessableEntity, fmt.Sprintf("Issue error: %v", err))
+					} else {
+						c.Status(http.StatusOK)
+					}
 				})
 				// R
 				v1.GET("/certificate", func(c *gin.Context) {

@@ -1,7 +1,6 @@
 package tea
 
 import (
-	"github.com/hashicorp/consul/api"
 	consulapi "github.com/hashicorp/consul/api"
 )
 
@@ -18,8 +17,12 @@ func NewConsul() (*Consul, error) {
 	return &Consul{client: client}, nil
 }
 
+func (c *Consul) KV() *consulapi.KV {
+	return c.client.KV()
+}
+
 func (c *Consul) Register(id string, port int, tags []string, meta map[string]string) error {
-	reg := api.AgentServiceRegistration{
+	reg := consulapi.AgentServiceRegistration{
 		ID:   id,
 		Name: id,
 		Port: port,

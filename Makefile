@@ -8,4 +8,9 @@ deploy: build
 agent:
 	go build -o ./bin/owl && ./bin/owl agent acltoken=secret debug=true
 
+test.issue:
+	http PUT :1914/tf/v1/certificate OhOwl-api-token:secret path="ops/owl" domains:='["owl.hashira.cloud"]'
 
+dev.hashi:
+	consul agent -dev&
+	vault server -dev&

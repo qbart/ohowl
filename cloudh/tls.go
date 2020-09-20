@@ -3,6 +3,7 @@ package cloudh
 import (
 	"context"
 	"crypto"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -79,10 +80,11 @@ func (fs *TlsFileStorage) Find(ctx context.Context, key string, ext string) ([]s
 // ----- ConsulFileStorage -----
 
 func (fs *TlsConsulFileStorage) Exists(ctx context.Context, key string) (bool, error) {
-	if _, _, err := fs.KV.Get(key, &consulapi.QueryOptions{RequireConsistent: true}); err != nil {
+	kv, _, err := fs.KV.Get(key, &consulapi.QueryOptions{RequireConsistent: true})
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return (kv != nil), nil
 }
 
 func (fs *TlsConsulFileStorage) Write(ctx context.Context, key string, b []byte) error {
@@ -95,8 +97,12 @@ func (fs *TlsConsulFileStorage) Write(ctx context.Context, key string, b []byte)
 
 func (fs *TlsConsulFileStorage) Read(ctx context.Context, key string) ([]byte, error) {
 	kv, _, err := fs.KV.Get(key, &consulapi.QueryOptions{RequireConsistent: true})
+
 	if err != nil {
 		return nil, err
+	}
+	if kv == nil {
+		return nil, errors.New("Not found")
 	}
 	return kv.Value, nil
 }
