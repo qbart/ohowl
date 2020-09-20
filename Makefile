@@ -5,4 +5,7 @@ build:
 deploy: build
 	scp bin/owl root@$(IP):/usr/local/bin
 
+agent:
+	go build -o ./bin/owl && ./bin/owl agent acltoken=secret debug=true
+
 

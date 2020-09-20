@@ -37,7 +37,7 @@ Issue/Renew certificate (when testing use `debug=true`)
 owl hcloud tls issue
     token=$HCLOUD_DNS_TOKEN
     email=you@example.com
-    zones=*.ohowl.dev,ohowl.dev
+    domains=*.ohowl.dev,ohowl.dev
     path=/tmp
     debug=true
 

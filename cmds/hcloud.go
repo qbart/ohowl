@@ -77,12 +77,13 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			if vars.Exist("path") {
+				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						Path: vars.GetString("path"),
 					},
-					Storage:        &cloudh.TlsFileStorage{},
-					AccountStorage: &cloudh.TlsFileStorage{},
+					Storage:        &fs,
+					AccountStorage: &fs,
 				}
 
 				certs, err := tls.List()
@@ -114,17 +115,18 @@ var (
 		Short: "Issue new certificate using DNS challenge",
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
-			if vars.Exist("token", "email", "zones", "path") {
+			if vars.Exist("token", "email", "domains", "path") {
+				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						Token:   vars.GetString("token"),
 						Email:   vars.GetString("email"),
-						Domains: vars.GetStrings("zones", ","),
+						Domains: vars.GetStrings("domains", ","),
 						Path:    vars.GetString("path"),
 						Debug:   vars.GetBoolDefault("debug", false),
 					},
-					Storage:        &cloudh.TlsFileStorage{},
-					AccountStorage: &cloudh.TlsFileStorage{},
+					Storage:        &fs,
+					AccountStorage: &fs,
 				}
 
 				err := tls.Issue()
@@ -132,7 +134,7 @@ var (
 					log.Fatal(err)
 				}
 			} else {
-				log.Fatal("Missing required params: token= email= zones= path=")
+				log.Fatal("Missing required params: token= email= domains= path=")
 			}
 		},
 	}
@@ -142,17 +144,18 @@ var (
 		Short: "Attempts certifcate renowal",
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
-			if vars.Exist("token", "email", "zones", "path") {
+			if vars.Exist("token", "email", "domains", "path") {
+				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						Token:   vars.GetString("token"),
 						Email:   vars.GetString("email"),
-						Domains: vars.GetStrings("zones", ","),
+						Domains: vars.GetStrings("domains", ","),
 						Path:    vars.GetString("path"),
 						Debug:   vars.GetBoolDefault("debug", false),
 					},
-					Storage:        &cloudh.TlsFileStorage{},
-					AccountStorage: &cloudh.TlsFileStorage{},
+					Storage:        &fs,
+					AccountStorage: &fs,
 				}
 
 				err := tls.Renew(false)
@@ -160,7 +163,7 @@ var (
 					log.Fatal(err)
 				}
 			} else {
-				log.Fatal("Missing required params: token= email= zones= path=")
+				log.Fatal("Missing required params: token= email= domains= path=")
 			}
 		},
 	}

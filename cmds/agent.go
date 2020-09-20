@@ -18,8 +18,7 @@ var cmdAgent = &cobra.Command{
 				Token: bootArgs.GetString("acltoken"),
 				Debug: bootArgs.GetBoolDefault("debug", false),
 			}
-
-			log.Fatal(app.Run())
+			app.Run()
 		} else {
 			log.Println("Missing acltoken=")
 		}

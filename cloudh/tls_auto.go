@@ -128,7 +128,7 @@ func (at *AutoTls) Renew(reuseKey bool) error {
 }
 
 func (at *AutoTls) List() ([]TlsCert, error) {
-	matches, err := at.Storage.Find(context.TODO(), at.Config.Path, "*.crt")
+	matches, err := at.Storage.Find(context.TODO(), at.Config.Path, ".crt")
 	if err != nil {
 		return nil, err
 	}

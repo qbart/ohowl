@@ -13,6 +13,8 @@ require (
 	github.com/go-resty/resty/v2 v2.3.0
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/gorilla/mux v1.8.0
+	github.com/hashicorp/consul/api v1.7.0
+	github.com/hashicorp/vault/api v1.0.4
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/imroc/req v0.3.0
 	github.com/json-iterator/go v1.1.10 // indirect
