@@ -13,14 +13,16 @@ var cmdAgent = &cobra.Command{
 	Short: "Start HTTP server on 1914 port",
 	Run: func(cmd *cobra.Command, args []string) {
 		bootArgs := tea.ParseEqArgs(args)
-		if bootArgs.Exist("acltoken") {
+		if bootArgs.Exist("acltoken", "account-path", "cert-path") {
 			app := web.App{
-				Token: bootArgs.GetString("acltoken"),
-				Debug: bootArgs.GetBoolDefault("debug", false),
+				AclToken:          bootArgs.GetString("acltoken"),
+				Debug:             bootArgs.GetBoolDefault("debug", false),
+				AccountPathPrefix: bootArgs.GetString("account-path"),
+				CertPathPrefix:    bootArgs.GetString("cert-path"),
 			}
 			app.Run()
 		} else {
-			log.Println("Missing acltoken=")
+			log.Println("Missing one of acltoken= account-path= cert-path=")
 		}
 	},
 }

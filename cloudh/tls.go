@@ -28,11 +28,12 @@ type TlsConsulFileStorage struct {
 }
 
 type TlsConfig struct {
-	Token   string
-	Email   string
-	Path    string
-	Domains []string
-	Debug   bool
+	DnsToken          string
+	Email             string
+	AccountPathPrefix string
+	CertPathPrefix    string
+	Domains           []string
+	Debug             bool
 }
 
 type AutoTls struct {

@@ -18,16 +18,18 @@ import (
 )
 
 type App struct {
-	Debug    bool
-	DnsEmail string
-	DnsToken string
-	Token    string
-	consul   *tea.Consul
-	vault    *tea.Vault
+	Debug             bool
+	DnsEmail          string
+	DnsToken          string
+	AclToken          string
+	CertPathPrefix    string
+	AccountPathPrefix string
+
+	consul *tea.Consul
+	vault  *tea.Vault
 }
 
 type TfCreateRequest struct {
-	Path    string   `json:"path,omitempty" binding:"required"`
 	Domains []string `json:"domains,omitempty" binding:"required"`
 }
 
@@ -42,55 +44,57 @@ func (a *App) Run() {
 		c.Status(200)
 	})
 
-	if a.Token == "" {
-		log.Printf("[WARN] Terraform API turned off - token is empty")
-	} else {
-		tf := r.Group("/tf")
+	if a.AclToken == "" {
+		log.Printf("[ERROR] No ACL token provided")
+		return
+	}
+
+	tf := r.Group("/tf")
+	{
+		tf.Use(OwlAuth(a.AclToken))
+
+		v1 := tf.Group("/v1")
 		{
-			tf.Use(OwlAuth(a.Token))
+			// C
+			v1.PUT("/certificate", func(c *gin.Context) {
+				var req TfCreateRequest
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": "No domains provided"})
+					return
+				}
+				log.Printf("Issue: %s", strings.Join(req.Domains, ","))
+				fs := cloudh.TlsConsulFileStorage{KV: a.consul.KV()}
+				tls := cloudh.AutoTls{
+					Config: cloudh.TlsConfig{
+						DnsToken:          a.DnsToken,
+						Email:             a.DnsEmail,
+						Domains:           req.Domains,
+						AccountPathPrefix: a.AccountPathPrefix,
+						CertPathPrefix:    a.CertPathPrefix,
+						Debug:             a.Debug,
+					},
+					Storage:        &fs,
+					AccountStorage: &fs,
+				}
 
-			v1 := tf.Group("/v1")
-			{
-				// C
-				v1.PUT("/certificate", func(c *gin.Context) {
-					var req TfCreateRequest
-					if err := c.ShouldBindJSON(&req); err != nil {
-						c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": "Missing required parameters: path, domains"})
-						return
-					}
-					log.Printf("Issue: [%s] in path: %s", strings.Join(req.Domains, ","), req.Path)
-					fs := cloudh.TlsConsulFileStorage{KV: a.consul.KV()}
-					tls := cloudh.AutoTls{
-						Config: cloudh.TlsConfig{
-							Token:   a.DnsToken,
-							Email:   a.DnsEmail,
-							Domains: req.Domains,
-							Path:    req.Path,
-							Debug:   a.Debug,
-						},
-						Storage:        &fs,
-						AccountStorage: &fs,
-					}
+				if err := tls.Issue(); err != nil {
+					c.String(http.StatusUnprocessableEntity, fmt.Sprintf("Issue error: %v", err))
+				} else {
+					c.Status(http.StatusOK)
+				}
+			})
+			// R
+			v1.GET("/certificate", func(c *gin.Context) {
 
-					if err := tls.Issue(); err != nil {
-						c.String(http.StatusUnprocessableEntity, fmt.Sprintf("Issue error: %v", err))
-					} else {
-						c.Status(http.StatusOK)
-					}
-				})
-				// R
-				v1.GET("/certificate", func(c *gin.Context) {
+			})
+			// U
+			v1.PATCH("/certificate", func(c *gin.Context) {
 
-				})
-				// U
-				v1.PATCH("/certificate", func(c *gin.Context) {
+			})
+			// D
+			v1.DELETE("/certificate", func(c *gin.Context) {
 
-				})
-				// D
-				v1.DELETE("/certificate", func(c *gin.Context) {
-
-				})
-			}
+			})
 		}
 	}
 
@@ -107,6 +111,10 @@ func (a *App) Run() {
 	if err != nil {
 		log.Fatalf("Consul register failed: %v", err)
 	}
+
+	//TODO vault
+	a.DnsToken = os.Getenv("HCLOUD_DNS_TOKEN")
+	a.DnsEmail = os.Getenv("ACME_EMAIL")
 
 	srv := &http.Server{
 		Handler:      r,

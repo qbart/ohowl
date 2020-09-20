@@ -80,7 +80,8 @@ var (
 				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
-						Path: vars.GetString("path"),
+						CertPathPrefix:    vars.GetString("path"),
+						AccountPathPrefix: vars.GetString("path"),
 					},
 					Storage:        &fs,
 					AccountStorage: &fs,
@@ -119,11 +120,12 @@ var (
 				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
-						Token:   vars.GetString("token"),
-						Email:   vars.GetString("email"),
-						Domains: vars.GetStrings("domains", ","),
-						Path:    vars.GetString("path"),
-						Debug:   vars.GetBoolDefault("debug", false),
+						DnsToken:          vars.GetString("token"),
+						Email:             vars.GetString("email"),
+						Domains:           vars.GetStrings("domains", ","),
+						CertPathPrefix:    vars.GetString("path"),
+						AccountPathPrefix: vars.GetString("path"),
+						Debug:             vars.GetBoolDefault("debug", false),
 					},
 					Storage:        &fs,
 					AccountStorage: &fs,
@@ -148,11 +150,12 @@ var (
 				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
-						Token:   vars.GetString("token"),
-						Email:   vars.GetString("email"),
-						Domains: vars.GetStrings("domains", ","),
-						Path:    vars.GetString("path"),
-						Debug:   vars.GetBoolDefault("debug", false),
+						DnsToken:          vars.GetString("token"),
+						Email:             vars.GetString("email"),
+						Domains:           vars.GetStrings("domains", ","),
+						CertPathPrefix:    vars.GetString("path"),
+						AccountPathPrefix: vars.GetString("path"),
+						Debug:             vars.GetBoolDefault("debug", false),
 					},
 					Storage:        &fs,
 					AccountStorage: &fs,

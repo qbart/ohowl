@@ -96,7 +96,7 @@ func (at *AutoTls) Renew(reuseKey bool) error {
 
 	var privateKey crypto.PrivateKey
 	if reuseKey {
-		keyBytes, err := at.Storage.Read(context.TODO(), at.getFileName(domain, ".key"))
+		keyBytes, err := at.Storage.Read(context.TODO(), at.getCertFileName(domain, ".key"))
 		if err != nil {
 			return fmt.Errorf("Error while loading the private key for domain %s\n\t%w", domain, err)
 		}
@@ -128,7 +128,7 @@ func (at *AutoTls) Renew(reuseKey bool) error {
 }
 
 func (at *AutoTls) List() ([]TlsCert, error) {
-	matches, err := at.Storage.Find(context.TODO(), at.Config.Path, ".crt")
+	matches, err := at.Storage.Find(context.TODO(), at.Config.CertPathPrefix, ".crt")
 	if err != nil {
 		return nil, err
 	}
@@ -155,14 +155,14 @@ func (at *AutoTls) List() ([]TlsCert, error) {
 
 func (at *AutoTls) saveResource(res *certificate.Resource) error {
 	return tea.ErrCoalesce(
-		at.Storage.Write(context.TODO(), at.getFileName(res.Domain, ".key"), res.PrivateKey),
-		at.Storage.Write(context.TODO(), at.getFileName(res.Domain, ".crt"), res.Certificate),
-		at.Storage.Write(context.TODO(), at.getFileName(res.Domain, ".ca"), res.IssuerCertificate),
+		at.Storage.Write(context.TODO(), at.getCertFileName(res.Domain, ".key"), res.PrivateKey),
+		at.Storage.Write(context.TODO(), at.getCertFileName(res.Domain, ".crt"), res.Certificate),
+		at.Storage.Write(context.TODO(), at.getCertFileName(res.Domain, ".ca"), res.IssuerCertificate),
 	)
 }
 
 func (at *AutoTls) readCertificate(domain, ext string) ([]*x509.Certificate, error) {
-	content, err := at.Storage.Read(context.TODO(), at.getFileName(domain, ext))
+	content, err := at.Storage.Read(context.TODO(), at.getCertFileName(domain, ext))
 	if err != nil {
 		return nil, err
 	}
@@ -170,17 +170,17 @@ func (at *AutoTls) readCertificate(domain, ext string) ([]*x509.Certificate, err
 	return certcrypto.ParsePEMBundle(content)
 }
 
-func (at *AutoTls) getFileName(domain, ext string) string {
+func (at *AutoTls) getCertFileName(domain, ext string) string {
 	safe, err := idna.ToASCII(strings.Replace(fmt.Sprint(domain, ext), "*", "_", -1))
 	if err != nil {
 		log.Fatal(err)
 	}
-	return filepath.Join(at.Config.Path, safe)
+	return filepath.Join(at.Config.CertPathPrefix, safe)
 }
 
 func (at *AutoTls) setupDnsChallenge(client *lego.Client) error {
 	hc := hetzner.NewDefaultConfig()
-	hc.APIKey = at.Config.Token
+	hc.APIKey = at.Config.DnsToken
 	provider, err := hetzner.NewDNSProviderConfig(hc)
 	if err != nil {
 		return err
@@ -251,11 +251,13 @@ func (at *AutoTls) saveAccount(user *AcmeUser) error {
 }
 
 func (at *AutoTls) accountFilePath() string {
-	return filepath.Join(at.Config.Path, at.Config.Email+".json")
+	//TODO: hash email
+	return filepath.Join(at.Config.AccountPathPrefix, at.Config.Email+".json")
 }
 
 func (at *AutoTls) accountPrivateKey() (crypto.PrivateKey, error) {
-	path := filepath.Join(at.Config.Path, at.Config.Email+".key")
+	//TODO: hash email
+	path := filepath.Join(at.Config.AccountPathPrefix, at.Config.Email+".key")
 
 	exists, err := at.AccountStorage.Exists(context.TODO(), path)
 	if err != nil {
