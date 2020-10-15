@@ -1,6 +1,7 @@
 package cmds
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -81,6 +82,10 @@ var (
 
 			if vars.Valid() {
 				cfs := cloudh.TlsStorageById(vars.GetString("cert-storage"))
+				if err := setupTlsFileStorage(cfs); err != nil {
+					log.Fatal(err)
+				}
+
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						CertPathPrefix:    vars.GetString("cert-path"),
@@ -125,7 +130,14 @@ var (
 
 			if vars.Valid() {
 				cfs := cloudh.TlsStorageById(vars.GetString("cert-storage"))
+				if err := setupTlsFileStorage(cfs); err != nil {
+					log.Fatal(err)
+				}
 				afs := cloudh.TlsStorageById(vars.GetString("account-storage"))
+				if err := setupTlsFileStorage(afs); err != nil {
+					log.Fatal(err)
+				}
+
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          vars.GetString("token"),
@@ -160,7 +172,14 @@ var (
 
 			if vars.Valid() {
 				cfs := cloudh.TlsStorageById(vars.GetString("cert-storage"))
+				if err := setupTlsFileStorage(cfs); err != nil {
+					log.Fatal(err)
+				}
 				afs := cloudh.TlsStorageById(vars.GetString("account-storage"))
+				if err := setupTlsFileStorage(afs); err != nil {
+					log.Fatal(err)
+				}
+
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          vars.GetString("token"),
@@ -193,4 +212,26 @@ func init() {
 	cmdHCloudTls.AddCommand(hcloudTlsList)
 	cmdHCloudTls.AddCommand(hcloudTlsIssue)
 	cmdHCloudTls.AddCommand(hcloudTlsRenew)
+}
+
+func setupTlsFileStorage(storage cloudh.TlsStorage) error {
+	switch storage.(type) {
+	case *cloudh.TlsFileStorage:
+		// FS is fine by default
+		return nil
+
+	case *cloudh.TlsConsulStorage:
+		if consul, err := tea.NewConsul(); err == nil {
+			consulStorage := storage.(*cloudh.TlsConsulStorage)
+			consulStorage.KV = consul.KV()
+			return nil
+		} else {
+			return err
+		}
+
+	case *cloudh.TlsVaultStorage:
+		return errors.New("Vault storage not implemented")
+	}
+
+	return errors.New("Invalid storage setup")
 }
