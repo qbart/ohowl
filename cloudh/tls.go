@@ -23,9 +23,10 @@ type TlsStorage interface {
 }
 
 type TlsFileStorage struct{}
-type TlsConsulFileStorage struct {
+type TlsConsulStorage struct {
 	KV *consulapi.KV
 }
+type TlsNullStorage struct{}
 
 type TlsConfig struct {
 	DnsToken          string
@@ -55,6 +56,24 @@ type AcmeUser struct {
 	key          crypto.PrivateKey
 }
 
+// ----- NullStorage -----
+
+func (fs *TlsNullStorage) Exists(ctx context.Context, key string) (bool, error) {
+	return false, errors.New("Empty storage for .Exists")
+}
+
+func (fs *TlsNullStorage) Write(ctx context.Context, key string, b []byte) error {
+	return errors.New("Empty storage for .Write")
+}
+
+func (fs *TlsNullStorage) Read(ctx context.Context, key string) ([]byte, error) {
+	return nil, errors.New("Empty storage for .Read")
+}
+
+func (fs *TlsNullStorage) Find(ctx context.Context, key string, ext string) ([]string, error) {
+	return nil, errors.New("Empty storage for .Find")
+}
+
 // ----- TlsFileStorage -----
 
 func (fs *TlsFileStorage) Exists(ctx context.Context, key string) (bool, error) {
@@ -78,9 +97,9 @@ func (fs *TlsFileStorage) Find(ctx context.Context, key string, ext string) ([]s
 	return filepath.Glob(filepath.Join(key, fmt.Sprint("*", ext)))
 }
 
-// ----- ConsulFileStorage -----
+// ----- TlsConsulStorage -----
 
-func (fs *TlsConsulFileStorage) Exists(ctx context.Context, key string) (bool, error) {
+func (fs *TlsConsulStorage) Exists(ctx context.Context, key string) (bool, error) {
 	kv, _, err := fs.KV.Get(key, &consulapi.QueryOptions{RequireConsistent: true})
 	if err != nil {
 		return false, err
@@ -88,7 +107,7 @@ func (fs *TlsConsulFileStorage) Exists(ctx context.Context, key string) (bool, e
 	return (kv != nil), nil
 }
 
-func (fs *TlsConsulFileStorage) Write(ctx context.Context, key string, b []byte) error {
+func (fs *TlsConsulStorage) Write(ctx context.Context, key string, b []byte) error {
 	kv := &consulapi.KVPair{Key: key, Value: b}
 	if _, err := fs.KV.Put(kv, nil); err != nil {
 		return err
@@ -96,7 +115,7 @@ func (fs *TlsConsulFileStorage) Write(ctx context.Context, key string, b []byte)
 	return nil
 }
 
-func (fs *TlsConsulFileStorage) Read(ctx context.Context, key string) ([]byte, error) {
+func (fs *TlsConsulStorage) Read(ctx context.Context, key string) ([]byte, error) {
 	kv, _, err := fs.KV.Get(key, &consulapi.QueryOptions{RequireConsistent: true})
 
 	if err != nil {
@@ -108,7 +127,7 @@ func (fs *TlsConsulFileStorage) Read(ctx context.Context, key string) ([]byte, e
 	return kv.Value, nil
 }
 
-func (fs *TlsConsulFileStorage) Find(ctx context.Context, key string, ext string) ([]string, error) {
+func (fs *TlsConsulStorage) Find(ctx context.Context, key string, ext string) ([]string, error) {
 	kvs, _, err := fs.KV.List(fmt.Sprint(key, "/"), nil)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/vault/api"
 	"github.com/qbart/ohowl/cloudh"
 	"github.com/qbart/ohowl/owl"
 	"github.com/qbart/ohowl/tea"
@@ -63,7 +65,7 @@ func (a *App) Run() {
 					return
 				}
 				log.Printf("Issue: %s", strings.Join(req.Domains, ","))
-				fs := cloudh.TlsConsulFileStorage{KV: a.consul.KV()}
+				fs := cloudh.TlsConsulStorage{KV: a.consul.KV()}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          a.DnsToken,
@@ -85,7 +87,6 @@ func (a *App) Run() {
 			})
 			// R
 			v1.GET("/certificate", func(c *gin.Context) {
-
 			})
 			// U
 			v1.PATCH("/certificate", func(c *gin.Context) {

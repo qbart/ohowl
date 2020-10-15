@@ -76,15 +76,17 @@ var (
 		Short: "List certificates",
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
-			if vars.Exist("path") {
+			vars.ValidatePresence("cert-path", "cert-storage")
+			if vars.Valid() {
+				nfs := cloudh.TlsNullStorage{}
 				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
-						CertPathPrefix:    vars.GetString("path"),
-						AccountPathPrefix: vars.GetString("path"),
+						CertPathPrefix:    vars.GetString("cert-path"),
+						AccountPathPrefix: "",
 					},
 					Storage:        &fs,
-					AccountStorage: &fs,
+					AccountStorage: &nfs, // not needed for listing
 				}
 
 				certs, err := tls.List()
@@ -116,15 +118,16 @@ var (
 		Short: "Issue new certificate using DNS challenge",
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
-			if vars.Exist("token", "email", "domains", "path") {
+			vars.ValidatePresence("token", "email", "domains", "cert-path", "account-path", "cert-storage", "account-storage")
+			if vars.Valid() {
 				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          vars.GetString("token"),
 						Email:             vars.GetString("email"),
 						Domains:           vars.GetStrings("domains", ","),
-						CertPathPrefix:    vars.GetString("path"),
-						AccountPathPrefix: vars.GetString("path"),
+						CertPathPrefix:    vars.GetString("cert-path"),
+						AccountPathPrefix: vars.GetString("account-path"),
 						Debug:             vars.GetBoolDefault("debug", false),
 					},
 					Storage:        &fs,
@@ -136,7 +139,7 @@ var (
 					log.Fatal(err)
 				}
 			} else {
-				log.Fatal("Missing required params: token= email= domains= path=")
+				log.Fatal("Missing required params: token= email= domains= cert-path= account-path= cert-storage= account-storage=")
 			}
 		},
 	}
@@ -146,15 +149,16 @@ var (
 		Short: "Attempts certifcate renowal",
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
-			if vars.Exist("token", "email", "domains", "path") {
+			vars.ValidatePresence("token", "email", "domains", "cert-path", "account-path", "cert-storage", "account-storage")
+			if vars.Valid() {
 				fs := cloudh.TlsFileStorage{}
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          vars.GetString("token"),
 						Email:             vars.GetString("email"),
 						Domains:           vars.GetStrings("domains", ","),
-						CertPathPrefix:    vars.GetString("path"),
-						AccountPathPrefix: vars.GetString("path"),
+						CertPathPrefix:    vars.GetString("cert-path"),
+						AccountPathPrefix: vars.GetString("account-path"),
 						Debug:             vars.GetBoolDefault("debug", false),
 					},
 					Storage:        &fs,
@@ -166,7 +170,7 @@ var (
 					log.Fatal(err)
 				}
 			} else {
-				log.Fatal("Missing required params: token= email= domains= path=")
+				log.Fatal("Missing required params: token= email= domains= cert-path= account-path= cert-storage= account-storage=")
 			}
 		},
 	}

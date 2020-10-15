@@ -38,7 +38,10 @@ owl hcloud tls issue
     token=$HCLOUD_DNS_TOKEN
     email=you@example.com
     domains=*.ohowl.dev,ohowl.dev
-    path=/tmp
+    cert-path=/tmp
+    cert-storage=fs|consul|vault
+    account-path=/tmp
+    account-storage=fs|consul|vault
     debug=true
 
 owl hcloud tls renew
@@ -47,5 +50,5 @@ owl hcloud tls renew
 
 List certificates
 ```
-owl hcloud tls list path=/tmp
+owl hcloud tls list cert-path=/tmp cert-storage=fs|consul|vault
 ```
