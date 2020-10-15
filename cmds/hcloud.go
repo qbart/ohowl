@@ -77,16 +77,17 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			vars.ValidatePresence("cert-path", "cert-storage")
+			vars.ValidateInclusion("cert-storage", []string{"fs", "consul", "vault"})
+
 			if vars.Valid() {
-				nfs := cloudh.TlsNullStorage{}
-				fs := cloudh.TlsFileStorage{}
+				cfs := cloudh.TlsStorageById(vars.GetString("cert-storage"))
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						CertPathPrefix:    vars.GetString("cert-path"),
 						AccountPathPrefix: "",
 					},
-					Storage:        &fs,
-					AccountStorage: &nfs, // not needed for listing
+					Storage:        cfs,
+					AccountStorage: &cloudh.TlsNullStorage{}, // not needed for listing
 				}
 
 				certs, err := tls.List()
@@ -108,7 +109,7 @@ var (
 				table.Render()
 
 			} else {
-				log.Fatal("Missing required params: path=")
+				log.Fatal(vars.ErrorMessages())
 			}
 		},
 	}
@@ -119,8 +120,12 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			vars.ValidatePresence("token", "email", "domains", "cert-path", "account-path", "cert-storage", "account-storage")
+			vars.ValidateInclusion("cert-storage", []string{"fs", "consul", "vault"})
+			vars.ValidateInclusion("account-storage", []string{"fs", "consul", "vault"})
+
 			if vars.Valid() {
-				fs := cloudh.TlsFileStorage{}
+				cfs := cloudh.TlsStorageById(vars.GetString("cert-storage"))
+				afs := cloudh.TlsStorageById(vars.GetString("account-storage"))
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          vars.GetString("token"),
@@ -130,8 +135,8 @@ var (
 						AccountPathPrefix: vars.GetString("account-path"),
 						Debug:             vars.GetBoolDefault("debug", false),
 					},
-					Storage:        &fs,
-					AccountStorage: &fs,
+					Storage:        cfs,
+					AccountStorage: afs,
 				}
 
 				err := tls.Issue()
@@ -139,7 +144,7 @@ var (
 					log.Fatal(err)
 				}
 			} else {
-				log.Fatal("Missing required params: token= email= domains= cert-path= account-path= cert-storage= account-storage=")
+				log.Fatal(vars.ErrorMessages())
 			}
 		},
 	}
@@ -150,8 +155,12 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			vars := tea.ParseEqArgs(args)
 			vars.ValidatePresence("token", "email", "domains", "cert-path", "account-path", "cert-storage", "account-storage")
+			vars.ValidateInclusion("cert-storage", []string{"fs", "consul", "vault"})
+			vars.ValidateInclusion("account-storage", []string{"fs", "consul", "vault"})
+
 			if vars.Valid() {
-				fs := cloudh.TlsFileStorage{}
+				cfs := cloudh.TlsStorageById(vars.GetString("cert-storage"))
+				afs := cloudh.TlsStorageById(vars.GetString("account-storage"))
 				tls := cloudh.AutoTls{
 					Config: cloudh.TlsConfig{
 						DnsToken:          vars.GetString("token"),
@@ -161,8 +170,8 @@ var (
 						AccountPathPrefix: vars.GetString("account-path"),
 						Debug:             vars.GetBoolDefault("debug", false),
 					},
-					Storage:        &fs,
-					AccountStorage: &fs,
+					Storage:        cfs,
+					AccountStorage: afs,
 				}
 
 				err := tls.Renew(false)
@@ -170,7 +179,7 @@ var (
 					log.Fatal(err)
 				}
 			} else {
-				log.Fatal("Missing required params: token= email= domains= cert-path= account-path= cert-storage= account-storage=")
+				log.Fatal(vars.ErrorMessages())
 			}
 		},
 	}

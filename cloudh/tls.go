@@ -26,6 +26,7 @@ type TlsFileStorage struct{}
 type TlsConsulStorage struct {
 	KV *consulapi.KV
 }
+type TlsVaultStorage struct{}
 type TlsNullStorage struct{}
 
 type TlsConfig struct {
@@ -54,6 +55,19 @@ type AcmeUser struct {
 	Email        string                 `json:"email,omitempty"`
 	Registration *registration.Resource `json:"registration,omitempty"`
 	key          crypto.PrivateKey
+}
+
+func TlsStorageById(id string) TlsStorage {
+	switch id {
+	case "consul":
+		return &TlsConsulStorage{}
+	case "vault":
+		return &TlsVaultStorage{}
+	case "fs":
+		return &TlsFileStorage{}
+	}
+
+	return &TlsNullStorage{}
 }
 
 // ----- NullStorage -----
@@ -140,6 +154,24 @@ func (fs *TlsConsulStorage) Find(ctx context.Context, key string, ext string) ([
 	}
 
 	return res, nil
+}
+
+// ----- TlsVaultStorage -----
+
+func (fs *TlsVaultStorage) Exists(ctx context.Context, key string) (bool, error) {
+	return false, errors.New("Not implemented")
+}
+
+func (fs *TlsVaultStorage) Write(ctx context.Context, key string, b []byte) error {
+	return errors.New("Not implemented")
+}
+
+func (fs *TlsVaultStorage) Read(ctx context.Context, key string) ([]byte, error) {
+	return nil, errors.New("Not implemented")
+}
+
+func (fs *TlsVaultStorage) Find(ctx context.Context, key string, ext string) ([]string, error) {
+	return nil, errors.New("Not implemented")
 }
 
 // ----- AcmeUser -----
