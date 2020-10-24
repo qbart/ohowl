@@ -5,12 +5,9 @@ build:
 deploy: build
 	scp bin/owl root@$(IP):/usr/local/bin
 
-agent:
-	go build -o ./bin/owl && ./bin/owl agent acltoken=secret debug=true account-path=ops/owl cert-path=owl
+tls:
+	go build -o ./bin/owl && ./bin/owl hcloud tls issue token=$(HCLOUD_DNS_TOKEN) email=$(EMAIL) domains=*.$(DOMAIN),$(DOMAIN) cert-path=tls cert-storage=consul account-path=account/tls account-storage=consul debug=true
 
-test.issue:
-	http PUT :1914/tf/v1/certificate OhOwl-api-token:secret domains:='["owl.hashira.cloud"]'
+dev.consul:
+	consul agent -config-dir ./.config/dev/consul -data-dir ./tmp
 
-dev.hashi:
-	consul agent -dev&
-	vault server -dev&

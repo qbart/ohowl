@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -130,7 +129,7 @@ func (a *App) Run() {
 		}
 	}()
 
-	tea.WaitForSignal(syscall.SIGINT, syscall.SIGTERM)
+	tea.SysCallWaitDefault()
 	err = consul.Deregister("OhOwl")
 	if err != nil {
 		log.Printf("Consul deregister failed: %v", err)
