@@ -1,3 +1,5 @@
+⚠ Since Hetzner Cloud supports some features out of the box, this project no longer make sense - unmaintained 
+
 TODO:
 - Consul/Vault storage
 - cert revocation
