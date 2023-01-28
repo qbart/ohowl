@@ -112,7 +112,23 @@ func (a *App) Run() {
 		log.Fatalf("Consul register failed: %v", err)
 	}
 
-	//TODO vault
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	client, err := api.NewClient(&api.Config{Address: "http://127.0.0.1:8200", HttpClient: httpClient})
+	if err != nil {
+		log.Fatalf("Vault conn failed: %v", err)
+	}
+	client.SetToken(os.Getenv("VAULT_STATIC_TOKEN"))
+	data, err := client.Logical().Read("secret/test")
+	// client.
+	if err != nil {
+		log.Fatalf("Vauld read failed: %v", err)
+	}
+	fmt.Println("data is", data, "err is", err)
+	b, _ := json.Marshal(data.Data)
+	fmt.Println(string(b))
+
 	a.DnsToken = os.Getenv("HCLOUD_DNS_TOKEN")
 	a.DnsEmail = os.Getenv("ACME_EMAIL")
 
